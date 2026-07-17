@@ -32,12 +32,18 @@ export {
 } from "./narration/configuration.js";
 export type {
   BlockquoteNarrationContext,
+  CodeBlockNarrationConfiguration,
+  CodeBlockNarrationContext,
+  CodeBlockNarrationOverrides,
+  CodeNarrationConfiguration,
+  CodeNarrationOverrides,
   DocumentNarrationContext,
   EmphasisNarrationContext,
   HeadingLevel,
   HeadingNarrationContext,
   HeadingNarrationOverrides,
   ImageNarrationContext,
+  InlineCodeNarrationContext,
   LinkNarrationContext,
   ListItemNarrationContext,
   ListItemNarrationOverrides,

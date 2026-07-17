@@ -72,6 +72,20 @@ test("a trailing pause cannot leave punctuation or whitespace after spoken text"
   assert.equal(result.diagnostics[0]?.code, "RENDERER_FEATURE_APPROXIMATED");
 });
 
+test("a pause next to source whitespace does not add punctuation or duplicate spacing", () => {
+  const result = renderNarration({
+    schemaVersion: 1,
+    tokens: [
+      { kind: "text", value: "before " },
+      { kind: "pause", durationMs: 150 },
+      { kind: "text", value: "middle" },
+      { kind: "pause", durationMs: 150 },
+      { kind: "text", value: " after" },
+    ],
+  });
+  assert.equal(result.text, "before middle after");
+});
+
 test("unsupported style diagnostics are stable and deduplicated by code and feature", () => {
   const plan: NarrationPlan = {
     schemaVersion: 1,

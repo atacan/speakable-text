@@ -1,4 +1,9 @@
 import type { NarrationFragment, NarrationStyle } from "./tokens.js";
+import {
+  DEFAULT_OPERATOR_PHRASES,
+  type CodeOperator,
+  type OperatorPhrasebook,
+} from "../code/operators.js";
 
 export type NarrationTemplateFactory<Context> = (
   context: Readonly<Context>,
@@ -68,6 +73,31 @@ export interface ImageNarrationContext {
   readonly reference?: string;
 }
 
+export interface InlineCodeNarrationContext {
+  readonly code: string;
+}
+
+export interface CodeBlockNarrationContext {
+  readonly code: string;
+  readonly language?: string;
+  readonly supported: boolean;
+}
+
+export interface CodeBlockNarrationConfiguration extends NarrationNodeRule<CodeBlockNarrationContext> {
+  readonly startAnnouncement: readonly NarrationFragment[];
+  readonly languageAnnouncement: NarrationTemplateFactory<CodeBlockNarrationContext>;
+  readonly endAnnouncement: readonly NarrationFragment[];
+  readonly commentStyle: NarrationStyle;
+  readonly linePauseMs: number;
+}
+
+export interface CodeNarrationConfiguration {
+  readonly mode: "natural";
+  readonly operators: OperatorPhrasebook;
+  readonly inline: NarrationNodeRule<InlineCodeNarrationContext>;
+  readonly block: CodeBlockNarrationConfiguration;
+}
+
 export type TableNarrationMode =
   | "headers-then-rows"
   | "header-per-cell"
@@ -113,6 +143,7 @@ export interface NarrationConfiguration {
   readonly blockquote: NarrationNodeRule<BlockquoteNarrationContext>;
   readonly image: NarrationNodeRule<ImageNarrationContext>;
   readonly table: TableNarrationConfiguration;
+  readonly code: CodeNarrationConfiguration;
 }
 
 export interface NarrationNodeRuleOverrides<Context> {
@@ -150,6 +181,21 @@ export interface TableNarrationOverrides extends NarrationNodeRuleOverrides<Tabl
   readonly emptyCellText?: string;
 }
 
+export interface CodeBlockNarrationOverrides extends NarrationNodeRuleOverrides<CodeBlockNarrationContext> {
+  readonly startAnnouncement?: readonly NarrationFragment[];
+  readonly languageAnnouncement?: NarrationTemplateFactory<CodeBlockNarrationContext>;
+  readonly endAnnouncement?: readonly NarrationFragment[];
+  readonly commentStyle?: NarrationStyle;
+  readonly linePauseMs?: number;
+}
+
+export interface CodeNarrationOverrides {
+  readonly mode?: "natural";
+  readonly operators?: Partial<Record<CodeOperator, string>>;
+  readonly inline?: NarrationNodeRuleOverrides<InlineCodeNarrationContext>;
+  readonly block?: CodeBlockNarrationOverrides;
+}
+
 /** Purpose-built deep overrides. Arrays and callbacks replace default values. */
 export interface NarrationConfigurationOverrides {
   readonly document?: NarrationNodeRuleOverrides<DocumentNarrationContext>;
@@ -164,6 +210,7 @@ export interface NarrationConfigurationOverrides {
   readonly blockquote?: NarrationNodeRuleOverrides<BlockquoteNarrationContext>;
   readonly image?: NarrationNodeRuleOverrides<ImageNarrationContext>;
   readonly table?: TableNarrationOverrides;
+  readonly code?: CodeNarrationOverrides;
 }
 
 const HEADING_PAUSES: Readonly<Record<HeadingLevel, readonly [number, number]>> = {
@@ -195,6 +242,15 @@ const TABLE_RULE_KEYS = [
   "announceRowNumbers",
   "repeatColumnHeaders",
   "emptyCellText",
+] as const;
+const CODE_KEYS = ["mode", "operators", "inline", "block"] as const;
+const CODE_BLOCK_RULE_KEYS = [
+  ...RULE_KEYS,
+  "startAnnouncement",
+  "languageAnnouncement",
+  "endAnnouncement",
+  "commentStyle",
+  "linePauseMs",
 ] as const;
 
 const SMALL_NUMBERS = [
@@ -297,6 +353,30 @@ function createDefaults(): NarrationConfiguration {
       announceRowNumbers: true,
       repeatColumnHeaders: true,
       emptyCellText: "empty",
+    },
+    code: {
+      mode: "natural",
+      operators: DEFAULT_OPERATOR_PHRASES,
+      inline: {
+        skip: false,
+        before: [{ kind: "pause", durationMs: 150 }],
+        after: [{ kind: "pause", durationMs: 150 }],
+        contentStyle: { role: "inline-code" },
+      },
+      block: {
+        skip: false,
+        before: [],
+        after: [],
+        contentStyle: { role: "code" },
+        startAnnouncement: [{ kind: "text", value: "Code block. " }],
+        languageAnnouncement: ({ language }) => language === undefined ? [] : [{
+          kind: "text",
+          value: `${language}. `,
+        }],
+        endAnnouncement: [{ kind: "text", value: "End code block." }],
+        commentStyle: { role: "code-comment" },
+        linePauseMs: 400,
+      },
     },
   };
 }
@@ -497,6 +577,65 @@ function resolveTableRule(
   });
 }
 
+function resolveCodeConfiguration(
+  base: CodeNarrationConfiguration,
+  override: CodeNarrationOverrides | undefined,
+): CodeNarrationConfiguration {
+  if (override === undefined) return base;
+  assertDataObject(override, "narration.code", CODE_KEYS);
+  if (Object.hasOwn(override, "mode") && override.mode !== "natural") {
+    fail("narration.code.mode", "must be natural");
+  }
+  let operators = base.operators;
+  if (override.operators !== undefined) {
+    const allowed = Object.keys(DEFAULT_OPERATOR_PHRASES);
+    assertDataObject(override.operators, "narration.code.operators", allowed);
+    const merged = { ...base.operators };
+    for (const [operator, phrase] of Object.entries(override.operators)) {
+      if (typeof phrase !== "string") fail(`narration.code.operators.${operator}`, "must be a string");
+      merged[operator as CodeOperator] = phrase;
+    }
+    operators = deepFreeze(merged);
+  }
+  const inline = resolveRule(base.inline, override.inline, "narration.code.inline");
+  const blockOverride = override.block;
+  if (blockOverride === undefined) return deepFreeze({ mode: "natural", operators, inline, block: base.block });
+  assertDataObject(blockOverride, "narration.code.block", CODE_BLOCK_RULE_KEYS);
+  const commonOverride: NarrationNodeRuleOverrides<CodeBlockNarrationContext> = Object.fromEntries(
+    RULE_KEYS.flatMap((key) => Object.hasOwn(blockOverride, key) ? [[key, blockOverride[key]]] : []),
+  );
+  const common = resolveRule(base.block, commonOverride, "narration.code.block");
+  if (Object.hasOwn(blockOverride, "languageAnnouncement") && typeof blockOverride.languageAnnouncement !== "function") {
+    fail("narration.code.block.languageAnnouncement", "must be a function");
+  }
+  if (Object.hasOwn(blockOverride, "linePauseMs") && (
+    typeof blockOverride.linePauseMs !== "number" || !Number.isFinite(blockOverride.linePauseMs) ||
+    blockOverride.linePauseMs < 0 || Object.is(blockOverride.linePauseMs, -0)
+  )) fail("narration.code.block.linePauseMs", "must be a finite, non-negative number");
+  const startAnnouncement = Object.hasOwn(blockOverride, "startAnnouncement")
+    ? cloneAndValidateNarrationFragments(blockOverride.startAnnouncement, "narration.code.block.startAnnouncement")
+    : base.block.startAnnouncement;
+  const endAnnouncement = Object.hasOwn(blockOverride, "endAnnouncement")
+    ? cloneAndValidateNarrationFragments(blockOverride.endAnnouncement, "narration.code.block.endAnnouncement")
+    : base.block.endAnnouncement;
+  const commentStyle = Object.hasOwn(blockOverride, "commentStyle")
+    ? resolveStyle(base.block.commentStyle, blockOverride.commentStyle, "narration.code.block.commentStyle") ?? {}
+    : base.block.commentStyle;
+  return deepFreeze({
+    mode: "natural",
+    operators,
+    inline,
+    block: {
+      ...common,
+      startAnnouncement,
+      languageAnnouncement: blockOverride.languageAnnouncement ?? base.block.languageAnnouncement,
+      endAnnouncement,
+      commentStyle,
+      linePauseMs: blockOverride.linePauseMs ?? base.block.linePauseMs,
+    },
+  });
+}
+
 /** Validate, clone, deeply resolve, and freeze narration overrides. */
 export function resolveNarrationConfiguration(
   overrides?: NarrationConfigurationOverrides,
@@ -505,6 +644,7 @@ export function resolveNarrationConfiguration(
   assertDataObject(overrides, "narration", [
     "document", "headings", "paragraph", "italic", "strong", "link", "orderedList", "unorderedList",
     "listItem", "blockquote", "image", "table",
+    "code",
   ]);
   if (overrides.headings !== undefined) {
     assertDataObject(overrides.headings, "narration.headings", HEADING_LEVELS.map(String));
@@ -526,5 +666,6 @@ export function resolveNarrationConfiguration(
     blockquote: resolveRule(defaultNarrationConfiguration.blockquote, overrides.blockquote, "narration.blockquote"),
     image: resolveRule(defaultNarrationConfiguration.image, overrides.image, "narration.image"),
     table: resolveTableRule(defaultNarrationConfiguration.table, overrides.table),
+    code: resolveCodeConfiguration(defaultNarrationConfiguration.code, overrides.code),
   });
 }

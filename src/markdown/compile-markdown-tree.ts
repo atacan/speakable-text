@@ -1,10 +1,12 @@
 import type { Nodes, Parent, Root } from "mdast";
 import type {
   BlockquoteNarrationContext,
+  CodeBlockNarrationContext,
   DocumentNarrationContext,
   EmphasisNarrationContext,
   HeadingNarrationContext,
   ImageNarrationContext,
+  InlineCodeNarrationContext,
   LinkNarrationContext,
   ListItemNarrationContext,
   ListNarrationContext,
@@ -14,6 +16,10 @@ import type {
   StrongNarrationContext,
   TableNarrationContext,
 } from "../narration/configuration.js";
+import { routeCodeLanguage } from "../code/language-tag.js";
+import { narrateLexicalCode } from "../code/narrate-lexical-code.js";
+import { parsePython } from "../code/python/parse-python.js";
+import { parseTypeScript } from "../code/typescript/parse-typescript.js";
 import {
   cloneAndValidateNarrationFragments,
   defaultNarrationConfiguration,
@@ -500,6 +506,107 @@ function compileImage(
   appendFragments(state, rule.after ?? [], inheritedStyle);
 }
 
+function spokenLanguage(tag: string | null | undefined): string | undefined {
+  const route = routeCodeLanguage(tag);
+  if (route === "python") return "Python";
+  if (route === "typescript") return "TypeScript";
+  const safeWords = (tag ?? "")
+    .normalize("NFKC")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+  if (safeWords.length === 0) return undefined;
+  return `${safeWords[0]?.toUpperCase() ?? ""}${safeWords.slice(1).toLowerCase()}`;
+}
+
+function compileInlineCode(
+  node: Extract<Nodes, { type: "inlineCode" }>,
+  state: CompilationState,
+  inheritedStyle: NarrationStyle | undefined,
+): void {
+  const rule = state.configuration.code.inline;
+  if (rule.skip === true) return;
+  const context = immutableContext<InlineCodeNarrationContext>({ code: node.value });
+  if (compileRuleReplacement(rule, context, state, inheritedStyle, "narration.code.inline")) return;
+  appendFragments(state, rule.before ?? [], inheritedStyle);
+  const style = mergeNarrationStyles(inheritedStyle, rule.contentStyle);
+  const fragments = narrateLexicalCode(node.value, {
+    operators: state.configuration.code.operators,
+    style: style ?? { role: "inline-code" },
+    commentStyle: style ?? { role: "inline-code" },
+    linePauseMs: 150,
+  });
+  appendFragments(state, fragments, undefined);
+  appendFragments(state, rule.after ?? [], inheritedStyle);
+}
+
+function compileCodeBlock(
+  node: Extract<Nodes, { type: "code" }>,
+  state: CompilationState,
+  inheritedStyle: NarrationStyle | undefined,
+): void {
+  const configuration = state.configuration.code;
+  const rule = configuration.block;
+  if (rule.skip === true) return;
+  const route = routeCodeLanguage(node.lang);
+  const language = spokenLanguage(node.lang);
+  const supported = route !== "fallback";
+  const context = immutableContext<CodeBlockNarrationContext>({
+    code: node.value,
+    ...(language === undefined ? {} : { language }),
+    supported,
+  });
+  const body = childState(state);
+  const replaced = compileRuleReplacement(rule, context, body, inheritedStyle, "narration.code.block");
+  if (!replaced) {
+    const codeStyle = mergeNarrationStyles(inheritedStyle, rule.contentStyle) ?? { role: "code" };
+    const commentStyle = mergeNarrationStyles(codeStyle, rule.commentStyle) ?? { role: "code-comment" };
+    appendFragments(body, rule.before ?? [], inheritedStyle);
+    appendFragments(body, rule.startAnnouncement, codeStyle);
+    appendFragments(
+      body,
+      cloneAndValidateNarrationFragments(rule.languageAnnouncement(context), "narration.code.block.languageAnnouncement result"),
+      codeStyle,
+    );
+    appendFragments(body, narrateLexicalCode(node.value, {
+      operators: configuration.operators,
+      style: codeStyle,
+      commentStyle,
+      linePauseMs: rule.linePauseMs,
+    }), undefined);
+    if (node.value.length > 0) body.tokens.push({ kind: "pause", durationMs: rule.linePauseMs });
+    appendFragments(body, rule.endAnnouncement, codeStyle);
+    appendFragments(body, rule.after ?? [], inheritedStyle);
+  }
+  if (body.tokens.length === 0) return;
+  const metadata = {
+    ...(language === undefined ? {} : { language }),
+    supported,
+  };
+  state.tokens.push(boundary("code-block", "start", metadata), ...body.tokens, boundary("code-block", "end", metadata));
+
+  if (!supported && node.lang !== null && node.lang !== undefined && node.lang.trim().length > 0) {
+    state.diagnostics.push(createNarrationDiagnostic(
+      "UNSUPPORTED_CODE_LANGUAGE",
+      "warning",
+      `Used deterministic lexical fallback for unsupported code language ${JSON.stringify(language ?? "unknown")}.`,
+    ));
+  } else if (supported && !replaced) {
+    const parsed = route === "python" ? parsePython(node.value) : parseTypeScript(node.value);
+    if (parsed.recoveryRegions.length > 0) {
+      state.diagnostics.push(createNarrationDiagnostic(
+        "CODE_PARSE_RECOVERY",
+        "warning",
+        `Recovered incomplete ${language ?? "supported"} code without discarding content.`,
+      ));
+    }
+    state.diagnostics.push(createNarrationDiagnostic(
+      "CODE_LITERAL_FALLBACK",
+      "info",
+      `Used deterministic lexical narration until semantic ${language ?? "code"} narration is available.`,
+    ));
+  }
+}
+
 const ROW_NUMBERS = [
   "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
   "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
@@ -767,6 +874,12 @@ function compileNode(
     case "image":
     case "imageReference":
       compileImage(node, state, inheritedStyle);
+      return;
+    case "inlineCode":
+      compileInlineCode(node, state, inheritedStyle);
+      return;
+    case "code":
+      compileCodeBlock(node, state, inheritedStyle);
       return;
     case "table":
       compileTable(node, state, inheritedStyle);

@@ -18,14 +18,15 @@ function finalPunctuation(text: string): string | undefined {
   return finalCharacter;
 }
 
-function pauseText(durationMs: number, renderedSoFar: string): string {
+function pauseText(durationMs: number, renderedSoFar: string, followingText: string | undefined): string {
   if (durationMs === 0) return "";
   if (renderedSoFar.length === 0) return "";
 
   const finalCharacter = renderedSoFar.at(-1);
   if (finalCharacter !== undefined && finalCharacter.trim().length === 0) {
-    return durationMs >= 750 ? "\n\n" : " ";
+    return "";
   }
+  if (followingText !== undefined && /^\s/u.test(followingText)) return "";
 
   const punctuation = finalPunctuation(renderedSoFar);
   const hasSentencePunctuation = punctuation !== undefined && ".!?".includes(punctuation);
@@ -102,7 +103,8 @@ function reportApproximatedPause(
  * - 750 ms and above: period + blank line (or only the blank line after
  *   sentence punctuation)
  * - At the start of output, no punctuation or whitespace is introduced.
- *   After existing whitespace, only whitespace is added.
+ *   Next to whitespace already carried by a text token, no duplicate
+ *   punctuation or whitespace is added.
  * - At the end of output, no trailing punctuation or whitespace is added.
  */
 export function createPlainTextRenderer(): NarrationRenderer {
@@ -142,7 +144,14 @@ export function createPlainTextRenderer(): NarrationRenderer {
         // A trailing request still produces an approximation diagnostic, but
         // punctuation/whitespace with no following speech would be audible as
         // nothing and would leave an unnatural trailing string suffix.
-        if (index < lastTextIndex) text += pauseText(token.durationMs, text);
+        if (index < lastTextIndex) {
+          let followingText: string | undefined;
+          for (let nextIndex = index + 1; nextIndex <= lastTextIndex; nextIndex += 1) {
+            const next = plan.tokens[nextIndex];
+            if (next?.kind === "text") { followingText = next.value; break; }
+          }
+          text += pauseText(token.durationMs, text, followingText);
+        }
       }
 
       return { text, diagnostics };
