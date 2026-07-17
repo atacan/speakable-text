@@ -7,6 +7,14 @@
 
 ---
 
+## Specification language
+
+The words **must** and **will** indicate version 1 requirements. A stated **default** defines required built-in behavior. The words **should**, **may**, **possible**, and **suggested** describe guidance or illustrative examples and are not acceptance requirements.
+
+Unless explicitly described as configurable, version 1 behavior must follow the stated defaults.
+
+---
+
 ## 1. Summary
 
 This project is a general-purpose TypeScript library that converts Markdown-formatted text into narration suitable for text-to-speech systems.
@@ -45,8 +53,7 @@ Run:
 
 ```bash
 npm install example-package
-````
-
+```
 ````
 
 The narration should resemble:
@@ -73,9 +80,9 @@ The first version must:
 - Avoid network requests.
 - Work in browsers and server-side JavaScript environments.
 - Handle malformed Markdown using best-effort parsing.
-- Preserve unsupported content through literal narration rather than silently dropping it.
-- Support synchronous and asynchronous APIs.
-- Support natural code narration for Python and TypeScript.
+- Preserve unsupported visible content through child-text recovery or literal narration rather than silently dropping it.
+- Provide a synchronous conversion API.
+- Support natural code narration for the required Python and TypeScript constructs defined in section 26.
 - Provide basic fallback narration for unsupported programming languages.
 - Support configurable narration of headings, emphasis, lists, links, code, tables, images, and other Markdown structures.
 - Allow text-to-speech provider behavior to be implemented through renderers.
@@ -328,9 +335,12 @@ export interface BoundaryNarrationToken {
   metadata?: Readonly<Record<string, string | number | boolean>>;
 }
 
-export type NarrationToken =
+export type NarrationFragment =
   | TextNarrationToken
-  | PauseNarrationToken
+  | PauseNarrationToken;
+
+export type NarrationToken =
+  | NarrationFragment
   | BoundaryNarrationToken;
 
 export interface NarrationPlan {
@@ -341,6 +351,22 @@ export interface NarrationPlan {
 Boundary tokens are not necessarily spoken. They preserve useful semantic context for renderers without requiring another tree.
 
 A plain-text renderer may ignore most boundary tokens. A specialized renderer may use them to alter voice, emotion, spacing, or provider markup.
+
+The compiler alone emits boundary tokens. User configuration and callbacks may emit text and pause fragments but cannot emit boundaries.
+
+### Plan invariants and normalization
+
+Before a narration plan is returned, the compiler must normalize it deterministically:
+
+* Remove empty text tokens.
+* Merge adjacent text tokens when their style and `literal` values are identical.
+* Collapse adjacent pause tokens with no intervening boundary to the longest requested duration.
+* Require pause durations to be finite, non-negative numbers.
+* Emit balanced, properly nested boundary pairs.
+
+Nested styles are merged from outer content to inner content. An inner style overrides only the properties it explicitly defines.
+
+The `literal` property records fallback provenance for inspection. It does not authorize provider markup or change renderer escaping rules.
 
 ---
 
@@ -373,6 +399,10 @@ Example diagnostics:
 
 Errors should be reserved for situations in which conversion cannot reasonably continue, such as invalid library configuration or an internal invariant failure.
 
+Malformed or unsupported input content must not throw. Invalid configuration must throw a `TypeError` before conversion begins, and an internal invariant failure may throw an `Error`. An `error` diagnostic is reserved for a localized failure from which conversion can continue, such as failure of one code-block compiler.
+
+Diagnostics must be returned in stable traversal order. Renderer diagnostics follow compiler diagnostics. Repeated renderer capability diagnostics should be deduplicated by diagnostic code and feature within one conversion.
+
 ---
 
 ## 10. Public API
@@ -387,7 +417,7 @@ export interface ConversionResult {
 }
 
 export interface ConvertMarkdownOptions {
-  readonly narration?: Partial<NarrationConfiguration>;
+  readonly narration?: NarrationConfigurationOverrides;
   readonly renderer?: NarrationRenderer;
 }
 
@@ -395,16 +425,13 @@ export function convertMarkdown(
   markdown: string,
   options?: ConvertMarkdownOptions,
 ): ConversionResult;
-
-export function convertMarkdownAsync(
-  markdown: string,
-  options?: ConvertMarkdownOptions,
-): Promise<ConversionResult>;
 ```
 
 The default renderer will produce plain speakable text.
 
-The asynchronous method must produce the same result as the synchronous method when the same synchronous components are used.
+`NarrationConfigurationOverrides` is a purpose-built nested override type. Its nested properties are optional, while arrays and callback values replace the corresponding default rather than being merged element by element. A shallow `Partial<NarrationConfiguration>` must not be used for the public API.
+
+An asynchronous convenience API may be added later if a supported parser or integration requires asynchronous initialization. Version 1 does not expose duplicate synchronous and asynchronous entry points.
 
 Lower-level APIs should also be available:
 
@@ -446,24 +473,20 @@ This approach is preferable to only using callbacks because:
 
 It is preferable to only using static templates because structures such as ordered lists, headings, links, and table cells require runtime context.
 
-### Token templates
+### Configuration fragments
 
 ```ts
-export type NarrationTokenTemplate =
-  | Omit<TextNarrationToken, "kind">
-  | Omit<PauseNarrationToken, "kind">;
-
 export type NarrationTemplateFactory<Context> = (
   context: Readonly<Context>,
-) => readonly NarrationToken[];
+) => readonly NarrationFragment[];
 ```
 
 ### General node rule
 
 ```ts
 export interface NarrationNodeRule<Context> {
-  readonly before?: readonly NarrationToken[];
-  readonly after?: readonly NarrationToken[];
+  readonly before?: readonly NarrationFragment[];
+  readonly after?: readonly NarrationFragment[];
   readonly contentStyle?: NarrationStyle;
 
   /**
@@ -477,11 +500,11 @@ Callbacks must:
 
 * Be deterministic.
 * Have no required network behavior.
-* Return narration tokens.
+* Return narration fragments.
 * Receive immutable context.
 * Avoid modifying parser AST nodes.
 
-Asynchronous callbacks should not be part of the initial configuration contract. The asynchronous top-level API is retained for future parser adapters and integrations.
+Asynchronous callbacks are not part of the initial configuration contract. A `compile` callback replaces that rule's `before`, compiled content, `contentStyle`, and `after` behavior; its returned fragments are otherwise preserved subject to plan normalization.
 
 ---
 
@@ -499,6 +522,8 @@ Front matter and inline narration directives will not affect configuration in ve
 ---
 
 ## 13. Default narration philosophy
+
+Version 1's built-in narration language is English. Built-in behavior must not depend on the host environment's locale, and version 1 does not expose a locale option.
 
 The default profile should sound like a human reading content rather than a screen reader exposing every structural detail.
 
@@ -571,7 +596,7 @@ Default behavior:
 * Use longer pauses for higher-level headings.
 * Ignore empty headings.
 
-Suggested default pause values:
+Default pause values:
 
 | Level | Before |  After |
 | ----- | -----: | -----: |
@@ -625,7 +650,7 @@ Advanced handling of version strings, dates, emoji, units, abbreviations, and un
 
 Italic and bold content will retain their textual content and receive styles.
 
-Suggested defaults:
+Defaults:
 
 ```ts
 italic: {
@@ -699,7 +724,7 @@ Default unordered-list behavior:
 
 Task-list items should preserve checked and unchecked state where it is available from the GFM parser.
 
-Suggested wording:
+Default wording:
 
 * “Completed item.”
 * “Incomplete item.”
@@ -840,7 +865,7 @@ JavaScript syntax that is valid within the selected TypeScript parser may also r
 
 The parser implementation is internal and must not become part of the public API.
 
-Tree-sitter is a strong implementation candidate because it supports multiple programming-language grammars and can be used across environments. However, the architecture must allow the implementation to be changed without breaking public consumers.
+Tree-sitter is an implementation candidate because it supports multiple programming-language grammars. It may be selected only if the chosen packages satisfy the synchronous browser and server runtime requirements in section 37. The architecture must allow the parser implementation to change without breaking public consumers.
 
 ---
 
@@ -950,67 +975,51 @@ The first implementation does not need to produce the most elegant possible narr
 
 ## 26. Minimum semantic code constructs
 
-Python and TypeScript narrators should initially support:
+Python and TypeScript narrators must initially support natural narration for:
 
 * Imports.
-* Variable declarations.
-* Assignments.
-* Function declarations.
-* Function parameters.
-* Type annotations.
-* Return types.
-* Function calls.
-* Return statements.
-* Class declarations.
-* Property access.
-* Conditional statements.
-* Equality and comparison expressions.
-* Boolean operators.
-* `for` loops.
-* `while` loops.
-* String literals.
-* Numeric literals.
-* Boolean and null-like literals.
-* Lists and arrays.
-* Dictionaries and objects.
+* Variable declarations and assignments.
+* Function declarations, parameters, type annotations, and return types.
+* Function calls, property access, and return statements.
+* Conditional statements, comparisons, and boolean operators.
+* `for` and `while` loops.
+* Primitive and basic collection literals.
 * Comments.
-* Basic exception handling.
-* Basic asynchronous function declarations.
-* Basic unary and binary expressions.
+* Common unary and binary expressions covered by the default phrasebook.
 
-Unsupported AST nodes must fall back to literal narration.
+Class declarations, exception handling, asynchronous constructs, and other unsupported AST nodes must use literal fallback narration in version 1. Implementations may narrate them semantically, but that behavior is not required for version 1 acceptance.
 
 ---
 
 ## 27. Default operator phrases
 
-The initial phrasebook should include:
+The initial phrasebook must include:
 
-| Operator or construct | Spoken form                 |   |    |
-| --------------------- | --------------------------- | - | -- |
-| `==`                  | is equal to                 |   |    |
-| `===`                 | is strictly equal to        |   |    |
-| `!=`                  | is not equal to             |   |    |
-| `!==`                 | is not strictly equal to    |   |    |
-| `<`                   | is less than                |   |    |
-| `<=`                  | is less than or equal to    |   |    |
-| `>`                   | is greater than             |   |    |
-| `>=`                  | is greater than or equal to |   |    |
-| `&&`                  | and                         |   |    |
-| `                     |                             | ` | or |
-| Python `and`          | and                         |   |    |
-| Python `or`           | or                          |   |    |
-| `!` / Python `not`    | not                         |   |    |
-| `=`                   | set to                      |   |    |
-| `+=`                  | increase by                 |   |    |
-| `-=`                  | decrease by                 |   |    |
-| `+`                   | plus                        |   |    |
-| `-`                   | minus                       |   |    |
-| `*`                   | multiplied by               |   |    |
-| `/`                   | divided by                  |   |    |
-| `%`                   | modulo                      |   |    |
-| `??`                  | otherwise use               |   |    |
-| `?.`                  | optionally access           |   |    |
+| Operator or construct | Spoken form                 |
+| --------------------- | --------------------------- |
+| `==`                  | is equal to                 |
+| `===`                 | is strictly equal to        |
+| `!=`                  | is not equal to             |
+| `!==`                 | is not strictly equal to    |
+| `<`                   | is less than                |
+| `<=`                  | is less than or equal to    |
+| `>`                   | is greater than             |
+| `>=`                  | is greater than or equal to |
+| `&&`                  | and                         |
+| `\|\|`                | or                          |
+| Python `and`          | and                         |
+| Python `or`           | or                          |
+| `!` / Python `not`    | not                         |
+| `=`                   | set to                      |
+| `+=`                  | increase by                 |
+| `-=`                  | decrease by                 |
+| `+`                   | plus                        |
+| `-`                   | minus                       |
+| `*`                   | multiplied by               |
+| `/`                   | divided by                  |
+| `%`                   | modulo                      |
+| `??`                  | otherwise use               |
+| `?.`                  | optionally access           |
 
 These phrases must be represented in configurable code-narration settings rather than scattered throughout the implementation.
 
@@ -1020,7 +1029,7 @@ These phrases must be represented in configurable code-narration settings rather
 
 Comments must be narrated.
 
-Suggested behavior:
+Default behavior:
 
 ```python
 # Load the current user
@@ -1050,7 +1059,7 @@ When a fenced code block uses an unsupported language:
 6. Mark the resulting tokens as literal or fallback narration.
 7. Return an `UNSUPPORTED_CODE_LANGUAGE` diagnostic.
 
-This fallback should use deterministic lexical scanning rather than relying entirely on a collection of regular-expression replacements.
+This fallback must use deterministic lexical scanning rather than relying entirely on a collection of regular-expression replacements.
 
 Regular expressions may be used for small, isolated normalization tasks, but must not serve as the main parser.
 
@@ -1119,6 +1128,8 @@ A renderer must:
 * Report unsupported or approximated features.
 * Avoid exposing API credentials.
 * Avoid assuming that its output will immediately be sent to a provider.
+
+Every `TextNarrationToken.value`, including values originating in user configuration, must be treated as spoken content and escaped for the target format. Provider control syntax may be introduced only by renderer logic, never by passing markup through a text token.
 
 ---
 
@@ -1219,6 +1230,8 @@ The parser library should remain an internal dependency.
 
 Users should not be required to understand its AST format.
 
+For unsupported Markdown nodes, the compiler must first narrate recoverable visible child text. If no visible child text exists, it must narrate a textual node value or literal source representation when one is available. Markup delimiters, including raw HTML tags, must not be spoken when visible text can be recovered safely. The compiler must emit an `UNSUPPORTED_MARKDOWN_NODE` diagnostic whenever this fallback is used.
+
 ---
 
 ## 37. Runtime requirements
@@ -1235,7 +1248,7 @@ The core library must:
 * Publish TypeScript declarations.
 * Prefer an ESM-first design.
 
-Parser packages that require different browser and server initialization may be hidden behind internal adapters.
+Version 1 parser dependencies must be ready for synchronous use when `convertMarkdown` is called. Parser packages that require asynchronous runtime initialization are not suitable for the version 1 synchronous API unless that initialization is completed entirely during ordinary module loading without a separate public lifecycle.
 
 ---
 
@@ -1250,6 +1263,8 @@ Given the same:
 * Parser versions.
 
 the library must produce the same narration plan and rendered text.
+
+This guarantee applies to built-in behavior. When users supply callbacks or renderers, determinism is guaranteed only if those components are themselves deterministic.
 
 The implementation must not use:
 
@@ -1320,25 +1335,25 @@ Snapshot changes affecting default narration should be treated as user-visible b
 Version 1 is complete when:
 
 1. A Markdown string can be converted synchronously.
-2. The same Markdown can be converted asynchronously.
-3. Conversion returns a typed narration plan.
-4. Conversion returns plain speakable text.
-5. GitHub Flavored Markdown headings, paragraphs, emphasis, links, lists, blockquotes, tables, images, inline code, and code blocks are handled.
-6. Python code receives AST-based natural narration.
-7. TypeScript code receives AST-based natural narration.
-8. Unsupported code receives deterministic fallback narration.
-9. Unsupported Markdown content is preserved literally.
-10. Empty nodes are ignored.
-11. Invisible characters are removed with diagnostics.
-12. Users can configure before and after tokens for major Markdown node types.
-13. Users can configure heading behavior by level.
-14. Users can configure table narration behavior.
-15. Users can configure code phrases and code-block announcements.
-16. Users can supply a custom renderer.
-17. The core library performs no network requests.
-18. Browser and server builds pass the same narration fixtures.
-19. Output is stable enough for snapshot testing.
-20. Representative AI-agent responses sound understandable when passed to common text-to-speech systems.
+2. Conversion returns a typed, normalized narration plan.
+3. Conversion returns plain speakable text.
+4. GitHub Flavored Markdown headings, paragraphs, emphasis, links, lists, blockquotes, tables, images, inline code, and code blocks are handled.
+5. The required Python constructs in section 26 receive AST-based natural narration.
+6. The required TypeScript constructs in section 26 receive AST-based natural narration.
+7. Unsupported and unparseable code receives deterministic fallback narration.
+8. Unsupported Markdown preserves visible child text or uses literal fallback when text cannot otherwise be recovered.
+9. Empty nodes are ignored.
+10. Invisible characters are removed with diagnostics.
+11. Users can configure before and after fragments for major Markdown node types.
+12. Users can configure heading behavior by level.
+13. Users can configure table narration behavior.
+14. Users can configure code phrases and code-block announcements.
+15. Users can supply a custom renderer.
+16. The core library performs no network requests.
+17. Browser and server builds pass the same narration fixtures.
+18. Output is stable enough for snapshot testing.
+19. Representative fixtures demonstrate that visible content is not silently lost, document order and relationships are preserved, and raw Markdown delimiters are not spoken except during explicit literal fallback.
+20. Required semantic code fixtures match documented golden narration expectations, and a manual listening review finds no blocking comprehension issue in the representative end-to-end fixtures.
 
 ---
 
@@ -1350,7 +1365,8 @@ The following are intentionally deferred:
 * User-supplied Markdown node parsers.
 * User-supplied programming-language parsers.
 * MDX and JSX.
-* Raw HTML narration.
+* Semantic narration of raw HTML structure beyond visible-text recovery.
+* An asynchronous conversion API and asynchronous parser adapters.
 * Front matter configuration.
 * Inline author narration directives.
 * Full SSML support.
