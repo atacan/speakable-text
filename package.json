@@ -1,0 +1,54 @@
+{
+  "name": "speakable-text",
+  "version": "0.0.0",
+  "description": "Deterministic Markdown-to-speakable-text library",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/browser/index.js",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/browser",
+    "dist/code",
+    "dist/markdown",
+    "dist/narration",
+    "dist/renderers",
+    "dist/compile-markdown.*",
+    "dist/convert-markdown.*",
+    "dist/index.*",
+    "dist/public-api.*",
+    "dist/render-narration.*"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:browser": "node scripts/build-browser.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run build:browser && npm run test:worker",
+    "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "test:worker": "node tests/worker-smoke.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@lezer/common": "1.5.2",
+    "@lezer/javascript": "1.5.4",
+    "@lezer/lr": "1.4.10",
+    "@lezer/python": "1.1.19",
+    "decode-named-character-reference": "1.3.0",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "unified": "11.0.5"
+  },
+  "devDependencies": {
+    "@types/mdast": "4.0.4",
+    "@types/node": "24.10.1",
+    "esbuild": "0.28.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}
