@@ -49,6 +49,10 @@ export type {
   NarrationTemplateFactory,
   ParagraphNarrationContext,
   StrongNarrationContext,
+  TableNarrationConfiguration,
+  TableNarrationContext,
+  TableNarrationMode,
+  TableNarrationOverrides,
 } from "./narration/configuration.js";
 export type {
   NarrationRenderer,

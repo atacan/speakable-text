@@ -68,6 +68,27 @@ export interface ImageNarrationContext {
   readonly reference?: string;
 }
 
+export type TableNarrationMode =
+  | "headers-then-rows"
+  | "header-per-cell"
+  | "cells-only";
+
+export interface TableNarrationContext {
+  readonly rowCount: number;
+  readonly columnCount: number;
+  readonly headers: readonly string[];
+  readonly text: string;
+}
+
+export interface TableNarrationConfiguration extends NarrationNodeRule<TableNarrationContext> {
+  readonly mode: TableNarrationMode;
+  readonly announceTableStart: boolean;
+  readonly announceTableEnd: boolean;
+  readonly announceRowNumbers: boolean;
+  readonly repeatColumnHeaders: boolean;
+  readonly emptyCellText?: string;
+}
+
 export interface ListItemNarrationRule extends NarrationNodeRule<ListItemNarrationContext> {
   readonly itemSeparator: readonly NarrationFragment[];
   readonly nestedItemSeparator: readonly NarrationFragment[];
@@ -91,6 +112,7 @@ export interface NarrationConfiguration {
   readonly listItem: ListItemNarrationRule;
   readonly blockquote: NarrationNodeRule<BlockquoteNarrationContext>;
   readonly image: NarrationNodeRule<ImageNarrationContext>;
+  readonly table: TableNarrationConfiguration;
 }
 
 export interface NarrationNodeRuleOverrides<Context> {
@@ -119,6 +141,15 @@ export interface ListItemNarrationOverrides extends NarrationNodeRuleOverrides<L
   readonly nestingPrefix?: NarrationTemplateFactory<ListItemNarrationContext>;
 }
 
+export interface TableNarrationOverrides extends NarrationNodeRuleOverrides<TableNarrationContext> {
+  readonly mode?: TableNarrationMode;
+  readonly announceTableStart?: boolean;
+  readonly announceTableEnd?: boolean;
+  readonly announceRowNumbers?: boolean;
+  readonly repeatColumnHeaders?: boolean;
+  readonly emptyCellText?: string;
+}
+
 /** Purpose-built deep overrides. Arrays and callbacks replace default values. */
 export interface NarrationConfigurationOverrides {
   readonly document?: NarrationNodeRuleOverrides<DocumentNarrationContext>;
@@ -132,6 +163,7 @@ export interface NarrationConfigurationOverrides {
   readonly listItem?: ListItemNarrationOverrides;
   readonly blockquote?: NarrationNodeRuleOverrides<BlockquoteNarrationContext>;
   readonly image?: NarrationNodeRuleOverrides<ImageNarrationContext>;
+  readonly table?: TableNarrationOverrides;
 }
 
 const HEADING_PAUSES: Readonly<Record<HeadingLevel, readonly [number, number]>> = {
@@ -154,6 +186,15 @@ const LIST_ITEM_RULE_KEYS = [
   "completedTaskPrefix",
   "incompleteTaskPrefix",
   "nestingPrefix",
+] as const;
+const TABLE_RULE_KEYS = [
+  ...RULE_KEYS,
+  "mode",
+  "announceTableStart",
+  "announceTableEnd",
+  "announceRowNumbers",
+  "repeatColumnHeaders",
+  "emptyCellText",
 ] as const;
 
 const SMALL_NUMBERS = [
@@ -244,6 +285,18 @@ function createDefaults(): NarrationConfiguration {
       before: [{ kind: "text", value: "Image. ", style: { role: "image" } }],
       after: [],
       contentStyle: { role: "image" },
+    },
+    table: {
+      skip: false,
+      before: [],
+      after: [],
+      contentStyle: { role: "table" },
+      mode: "header-per-cell",
+      announceTableStart: true,
+      announceTableEnd: true,
+      announceRowNumbers: true,
+      repeatColumnHeaders: true,
+      emptyCellText: "empty",
     },
   };
 }
@@ -407,6 +460,43 @@ function resolveListItemRule(
   });
 }
 
+function resolveTableRule(
+  base: TableNarrationConfiguration,
+  override: TableNarrationOverrides | undefined,
+): TableNarrationConfiguration {
+  if (override === undefined) return base;
+  assertDataObject(override, "narration.table", TABLE_RULE_KEYS);
+  const commonOverride: NarrationNodeRuleOverrides<TableNarrationContext> = Object.fromEntries(
+    RULE_KEYS.flatMap((key) => Object.hasOwn(override, key) ? [[key, override[key]]] : []),
+  );
+  const common = resolveRule(base, commonOverride, "narration.table");
+  const modes: readonly TableNarrationMode[] = ["headers-then-rows", "header-per-cell", "cells-only"];
+  if (Object.hasOwn(override, "mode") && !modes.includes(override.mode as TableNarrationMode)) {
+    fail("narration.table.mode", "must be headers-then-rows, header-per-cell, or cells-only");
+  }
+  for (const key of [
+    "announceTableStart", "announceTableEnd", "announceRowNumbers", "repeatColumnHeaders",
+  ] as const) {
+    if (Object.hasOwn(override, key) && typeof override[key] !== "boolean") {
+      fail(`narration.table.${key}`, "must be a boolean");
+    }
+  }
+  if (Object.hasOwn(override, "emptyCellText") && typeof override.emptyCellText !== "string") {
+    fail("narration.table.emptyCellText", "must be a string");
+  }
+  return deepFreeze({
+    ...common,
+    mode: override.mode ?? base.mode,
+    announceTableStart: override.announceTableStart ?? base.announceTableStart,
+    announceTableEnd: override.announceTableEnd ?? base.announceTableEnd,
+    announceRowNumbers: override.announceRowNumbers ?? base.announceRowNumbers,
+    repeatColumnHeaders: override.repeatColumnHeaders ?? base.repeatColumnHeaders,
+    ...(Object.hasOwn(override, "emptyCellText")
+      ? { emptyCellText: override.emptyCellText }
+      : base.emptyCellText === undefined ? {} : { emptyCellText: base.emptyCellText }),
+  });
+}
+
 /** Validate, clone, deeply resolve, and freeze narration overrides. */
 export function resolveNarrationConfiguration(
   overrides?: NarrationConfigurationOverrides,
@@ -414,7 +504,7 @@ export function resolveNarrationConfiguration(
   if (overrides === undefined) return defaultNarrationConfiguration;
   assertDataObject(overrides, "narration", [
     "document", "headings", "paragraph", "italic", "strong", "link", "orderedList", "unorderedList",
-    "listItem", "blockquote", "image",
+    "listItem", "blockquote", "image", "table",
   ]);
   if (overrides.headings !== undefined) {
     assertDataObject(overrides.headings, "narration.headings", HEADING_LEVELS.map(String));
@@ -435,5 +525,6 @@ export function resolveNarrationConfiguration(
     listItem: resolveListItemRule(defaultNarrationConfiguration.listItem, overrides.listItem),
     blockquote: resolveRule(defaultNarrationConfiguration.blockquote, overrides.blockquote, "narration.blockquote"),
     image: resolveRule(defaultNarrationConfiguration.image, overrides.image, "narration.image"),
+    table: resolveTableRule(defaultNarrationConfiguration.table, overrides.table),
   });
 }

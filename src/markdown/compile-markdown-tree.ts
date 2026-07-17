@@ -12,6 +12,7 @@ import type {
   NarrationNodeRule,
   ParagraphNarrationContext,
   StrongNarrationContext,
+  TableNarrationContext,
 } from "../narration/configuration.js";
 import {
   cloneAndValidateNarrationFragments,
@@ -38,6 +39,7 @@ interface CompilationState {
   readonly tokens: NarrationToken[];
   readonly diagnostics: NarrationDiagnostic[];
   readonly configuration: NarrationConfiguration;
+  suppressedRawHtmlElement?: "script" | "style";
 }
 
 function boundary(
@@ -68,7 +70,12 @@ function cleanProseText(value: string, diagnostics: NarrationDiagnostic[]): stri
   return withoutInvisible.replace(/\s+/gu, " ");
 }
 
-function appendText(state: CompilationState, value: string, style: NarrationStyle | undefined): void {
+function appendText(
+  state: CompilationState,
+  value: string,
+  style: NarrationStyle | undefined,
+  literal?: boolean,
+): void {
   const cleaned = cleanProseText(value, state.diagnostics);
   if (cleaned.length === 0) return;
   const previous = state.tokens.at(-1);
@@ -77,8 +84,8 @@ function appendText(state: CompilationState, value: string, style: NarrationStyl
     : cleaned;
   if (normalized.length === 0) return;
   const token: TextNarrationToken = style === undefined
-    ? { kind: "text", value: normalized }
-    : { kind: "text", value: normalized, style };
+    ? { kind: "text", value: normalized, ...(literal === undefined ? {} : { literal }) }
+    : { kind: "text", value: normalized, style, ...(literal === undefined ? {} : { literal }) };
   state.tokens.push(token);
 }
 
@@ -159,7 +166,114 @@ function trimInlineEdges(tokens: NarrationToken[]): void {
 }
 
 function childState(state: CompilationState): CompilationState {
-  return { tokens: [], diagnostics: state.diagnostics, configuration: state.configuration };
+  return {
+    tokens: [],
+    diagnostics: state.diagnostics,
+    configuration: state.configuration,
+    ...(state.suppressedRawHtmlElement === undefined ? {} : { suppressedRawHtmlElement: state.suppressedRawHtmlElement }),
+  };
+}
+
+function markdownRecoveryText(value: string): { value: string; transformed: boolean } {
+  const unresolvedReference = /^\[([^\]\n]+)\]\[[^\]\n]+\]$/u.exec(value);
+  if (unresolvedReference !== null) return { value: unresolvedReference[1] ?? "", transformed: true };
+  const unfinishedEmphasis = /^(\*{1,3}|_{1,3})(?=\S)([\s\S]+)$/u.exec(value);
+  if (unfinishedEmphasis !== null && !value.endsWith(unfinishedEmphasis[1] ?? "")) {
+    return { value: unfinishedEmphasis[2] ?? "", transformed: true };
+  }
+  return { value, transformed: false };
+}
+
+function recoverTextNode(
+  value: string,
+  state: CompilationState,
+  inheritedStyle: NarrationStyle | undefined,
+): void {
+  if (state.suppressedRawHtmlElement !== undefined) return;
+  const recovered = markdownRecoveryText(value);
+  if (recovered.transformed) {
+    state.diagnostics.push(createNarrationDiagnostic(
+      "MARKDOWN_PARSE_RECOVERY",
+      "warning",
+      "Recovered visible text from malformed Markdown delimiters.",
+    ));
+  }
+  appendText(state, recovered.value, inheritedStyle);
+}
+
+function recoverRawHtml(value: string): string {
+  let output = "";
+  let index = 0;
+  let suppressed: "script" | "style" | undefined;
+  while (index < value.length) {
+    const opening = suppressed === undefined
+      ? value.indexOf("<", index)
+      : value.toLowerCase().indexOf(`</${suppressed}`, index);
+    if (opening === -1) {
+      if (suppressed === undefined) output += value.slice(index);
+      break;
+    }
+    if (suppressed === undefined) output += value.slice(index, opening);
+    const closing = findHtmlTagEnd(value, opening);
+    if (closing === -1) break;
+    const tag = /^<\s*(\/?)\s*([A-Za-z][A-Za-z0-9:-]*)/u.exec(value.slice(opening, closing + 1));
+    if (tag !== null) {
+      const name = (tag[2] ?? "").toLowerCase();
+      if (name === "script" || name === "style") {
+        if ((tag[1] ?? "") === "/") suppressed = undefined;
+        else suppressed = name;
+      }
+    }
+    index = closing + 1;
+  }
+  return output;
+}
+
+function findHtmlTagEnd(value: string, opening: number): number {
+  let quote: "\"" | "'" | undefined;
+  for (let index = opening + 1; index < value.length; index += 1) {
+    const character = value[index];
+    if (quote !== undefined) {
+      if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === "\"" || character === "'") quote = character;
+    else if (character === ">") return index;
+  }
+  return -1;
+}
+
+function standaloneRawTag(value: string): { closing: boolean; name: string } | undefined {
+  const opening = value.search(/\S/u);
+  if (opening === -1 || value[opening] !== "<") return undefined;
+  const closing = findHtmlTagEnd(value, opening);
+  if (closing === -1 || value.slice(closing + 1).trim().length > 0) return undefined;
+  const match = /^<\s*(\/?)\s*([A-Za-z][A-Za-z0-9:-]*)/u.exec(value.slice(opening, closing + 1));
+  return match === null ? undefined : {
+    closing: (match[1] ?? "") === "/",
+    name: (match[2] ?? "").toLowerCase(),
+  };
+}
+
+function compileRawHtml(
+  node: Extract<Nodes, { type: "html" }>,
+  state: CompilationState,
+  inheritedStyle: NarrationStyle | undefined,
+): void {
+  state.diagnostics.push(createNarrationDiagnostic(
+    "UNSUPPORTED_MARKDOWN_NODE",
+    "warning",
+    "Recovered visible text from unsupported Markdown node type html.",
+  ));
+  const standaloneTag = standaloneRawTag(node.value);
+  if (standaloneTag !== undefined && (standaloneTag.name === "script" || standaloneTag.name === "style")) {
+    if (standaloneTag.closing) delete state.suppressedRawHtmlElement;
+    else state.suppressedRawHtmlElement = standaloneTag.name;
+    return;
+  }
+  const recovered = recoverRawHtml(node.value);
+  const visible = /[\r\n]/u.test(node.value) ? recovered.trim() : recovered;
+  if (visible.trim().length > 0) appendText(state, visible, inheritedStyle);
 }
 
 function compileBoundedRule<Context extends object>(
@@ -386,6 +500,168 @@ function compileImage(
   appendFragments(state, rule.after ?? [], inheritedStyle);
 }
 
+const ROW_NUMBERS = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+  "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
+] as const;
+
+function spokenRowNumber(value: number): string {
+  return ROW_NUMBERS[value] ?? String(value);
+}
+
+function tableMetadata(node: Extract<Nodes, { type: "table" }>): BoundaryNarrationToken["metadata"] {
+  const columnCount = node.children.reduce((maximum, row) => Math.max(maximum, row.children.length), 0);
+  return {
+    rowCount: Math.max(0, node.children.length - 1),
+    columnCount,
+  };
+}
+
+function compileTableCellContent(
+  cell: Extract<Nodes, { type: "tableCell" }> | undefined,
+  state: CompilationState,
+  inheritedStyle: NarrationStyle | undefined,
+  emptyCellText: string | undefined,
+): void {
+  const before = state.tokens.length;
+  for (const child of cell?.children ?? []) compileNode(child, state, inheritedStyle, true, 0, false);
+  if (state.tokens.length === before && emptyCellText !== undefined) appendText(state, emptyCellText, inheritedStyle);
+}
+
+function compileTableCell(
+  cell: Extract<Nodes, { type: "tableCell" }> | undefined,
+  state: CompilationState,
+  inheritedStyle: NarrationStyle | undefined,
+  rowIndex: number,
+  columnIndex: number,
+  header: boolean,
+  headerText: string | undefined,
+  emptyCellText: string | undefined,
+): void {
+  const metadata = {
+    rowIndex,
+    columnIndex,
+    header,
+    ...(headerText === undefined ? {} : { headerText }),
+  };
+  state.tokens.push(boundary("table-cell", "start", metadata));
+  compileTableCellContent(cell, state, inheritedStyle, emptyCellText);
+  state.tokens.push(boundary("table-cell", "end", metadata));
+}
+
+function compileTable(
+  node: Extract<Nodes, { type: "table" }>,
+  state: CompilationState,
+  inheritedStyle: NarrationStyle | undefined,
+): void {
+  const rule = state.configuration.table;
+  if (rule.skip === true) return;
+  const headerRow = node.children[0];
+  const columnCount = node.children.reduce((maximum, row) => Math.max(maximum, row.children.length), 0);
+  const headers = Object.freeze(Array.from(
+    { length: columnCount },
+    (_, columnIndex) => {
+      const cell = headerRow?.children[columnIndex];
+      return cell === undefined ? "" : visibleText(cell).trim();
+    },
+  ));
+  const context = immutableContext<TableNarrationContext>({
+    rowCount: Math.max(0, node.children.length - 1),
+    columnCount,
+    headers,
+    text: visibleText(node),
+  });
+  const body = childState(state);
+  if (!compileRuleReplacement(rule, context, body, inheritedStyle, "narration.table")) {
+    const tableStyle = mergeNarrationStyles(inheritedStyle, rule.contentStyle);
+    appendFragments(body, rule.before ?? [], inheritedStyle);
+    if (rule.announceTableStart) appendText(body, "Table. ", tableStyle);
+
+    if (rule.mode !== "cells-only" && headerRow !== undefined) {
+      const rowMetadata = { rowIndex: 0, header: true };
+      body.tokens.push(boundary("table-row", "start", rowMetadata));
+      appendText(body, "Columns: ", tableStyle);
+      headers.forEach((_, columnIndex) => {
+        const cell = headerRow.children[columnIndex];
+        if (columnIndex > 0) appendText(body, columnIndex === headers.length - 1 ? " and " : ", ", tableStyle);
+        compileTableCell(
+          cell,
+          body,
+          mergeNarrationStyles(tableStyle, { role: "table-header" }),
+          0,
+          columnIndex,
+          true,
+          headers[columnIndex],
+          rule.emptyCellText,
+        );
+      });
+      appendText(body, ". ", tableStyle);
+      body.tokens.push(boundary("table-row", "end", rowMetadata));
+    }
+
+    const firstRowIndex = rule.mode === "cells-only" ? 0 : 1;
+    for (let rowIndex = firstRowIndex; rowIndex < node.children.length; rowIndex += 1) {
+      const row = node.children[rowIndex];
+      if (row === undefined) continue;
+      const header = rowIndex === 0;
+      const spokenIndex = header ? 0 : rowIndex;
+      const rowMetadata = { rowIndex, header };
+      body.tokens.push(boundary("table-row", "start", rowMetadata));
+      if (!header && rule.announceRowNumbers) {
+        appendText(body, `Row ${spokenRowNumber(spokenIndex)}. `, tableStyle);
+      }
+      for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+        const cell = row.children[columnIndex];
+        if (columnIndex > 0) appendText(body, " ", tableStyle);
+        const headerText = headers[columnIndex];
+        if (!header && rule.mode === "header-per-cell" && rule.repeatColumnHeaders && headerText !== undefined) {
+          appendText(body, `${headerText}: `, mergeNarrationStyles(tableStyle, { role: "table-header" }));
+        }
+        compileTableCell(
+          cell,
+          body,
+          mergeNarrationStyles(tableStyle, { role: header ? "table-header" : "table-cell" }),
+          rowIndex,
+          columnIndex,
+          header,
+          headerText,
+          rule.emptyCellText,
+        );
+        appendText(body, ".", tableStyle);
+      }
+      if (rowIndex < node.children.length - 1 || rule.announceTableEnd || (rule.after?.length ?? 0) > 0) {
+        appendText(body, " ", tableStyle);
+      }
+      body.tokens.push(boundary("table-row", "end", rowMetadata));
+    }
+    if (rule.announceTableEnd) appendText(body, "End table.", tableStyle);
+    appendFragments(body, rule.after ?? [], inheritedStyle);
+  }
+  if (body.tokens.length === 0) return;
+  const metadata = tableMetadata(node);
+  state.tokens.push(boundary("table", "start", metadata), ...body.tokens, boundary("table", "end", metadata));
+}
+
+function compileUnsupportedNode(
+  node: Nodes,
+  state: CompilationState,
+  inheritedStyle: NarrationStyle | undefined,
+): void {
+  state.diagnostics.push(createNarrationDiagnostic(
+    "UNSUPPORTED_MARKDOWN_NODE",
+    "warning",
+    `Recovered visible text from unsupported Markdown node type ${node.type}.`,
+  ));
+  const before = state.tokens.length;
+  if (isParent(node)) {
+    for (const child of node.children) compileNode(child, state, inheritedStyle, true, 0, false);
+  }
+  if (state.tokens.length > before) return;
+  const record = node as unknown as Record<string, unknown>;
+  const literal = [record["value"], record["raw"], record["source"]].find((value) => typeof value === "string");
+  if (typeof literal === "string") appendText(state, literal, inheritedStyle, true);
+}
+
 function compileInlineRule<Context extends object>(
   node: Nodes & Parent,
   rule: NarrationNodeRule<Context>,
@@ -424,7 +700,7 @@ function compileNode(
       else compileParagraph(node, state, inheritedStyle, listDepth, suppressParagraphPause);
       return;
     case "text":
-      appendText(state, node.value, inheritedStyle);
+      recoverTextNode(node.value, state, inheritedStyle);
       return;
     case "emphasis":
       compileInlineRule<EmphasisNarrationContext>(
@@ -492,8 +768,18 @@ function compileNode(
     case "imageReference":
       compileImage(node, state, inheritedStyle);
       return;
-    default:
+    case "table":
+      compileTable(node, state, inheritedStyle);
+      return;
+    case "tableRow":
+    case "tableCell":
       compileChildrenTemporarily(node, state, inheritedStyle);
+      return;
+    case "html":
+      compileRawHtml(node, state, inheritedStyle);
+      return;
+    default:
+      compileUnsupportedNode(node, state, inheritedStyle);
   }
 }
 
