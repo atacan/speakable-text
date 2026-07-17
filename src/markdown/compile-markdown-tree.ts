@@ -19,6 +19,7 @@ import type {
 import { routeCodeLanguage } from "../code/language-tag.js";
 import { narrateLexicalCode } from "../code/narrate-lexical-code.js";
 import { parsePython } from "../code/python/parse-python.js";
+import { narratePython } from "../code/python/narrate-python.js";
 import { parseTypeScript } from "../code/typescript/parse-typescript.js";
 import {
   cloneAndValidateNarrationFragments,
@@ -567,12 +568,38 @@ function compileCodeBlock(
       cloneAndValidateNarrationFragments(rule.languageAnnouncement(context), "narration.code.block.languageAnnouncement result"),
       codeStyle,
     );
-    appendFragments(body, narrateLexicalCode(node.value, {
+    const codeOptions = {
       operators: configuration.operators,
       style: codeStyle,
       commentStyle,
       linePauseMs: rule.linePauseMs,
-    }), undefined);
+    };
+    if (route === "python") {
+      const parsed = parsePython(node.value);
+      if (parsed.recoveryRegions.length > 0) {
+        appendFragments(body, narrateLexicalCode(node.value, codeOptions), undefined);
+        body.diagnostics.push(createNarrationDiagnostic(
+          "CODE_PARSE_RECOVERY",
+          "warning",
+          `Recovered incomplete ${language ?? "supported"} code without discarding content.`,
+        ));
+        body.diagnostics.push(createNarrationDiagnostic(
+          "CODE_LITERAL_FALLBACK",
+          "info",
+          `Used deterministic lexical narration for recovered ${language ?? "code"}.`,
+        ));
+      } else {
+        const narrated = narratePython(node.value, parsed.tree, codeOptions);
+        appendFragments(body, narrated.fragments, undefined);
+        if (narrated.usedLiteralFallback) body.diagnostics.push(createNarrationDiagnostic(
+          "CODE_LITERAL_FALLBACK",
+          "info",
+          `Used deterministic lexical narration for unsupported ${language ?? "code"} constructs.`,
+        ));
+      }
+    } else {
+      appendFragments(body, narrateLexicalCode(node.value, codeOptions), undefined);
+    }
     if (node.value.length > 0) body.tokens.push({ kind: "pause", durationMs: rule.linePauseMs });
     appendFragments(body, rule.endAnnouncement, codeStyle);
     appendFragments(body, rule.after ?? [], inheritedStyle);
@@ -590,8 +617,8 @@ function compileCodeBlock(
       "warning",
       `Used deterministic lexical fallback for unsupported code language ${JSON.stringify(language ?? "unknown")}.`,
     ));
-  } else if (supported && !replaced) {
-    const parsed = route === "python" ? parsePython(node.value) : parseTypeScript(node.value);
+  } else if (supported && !replaced && route === "typescript") {
+    const parsed = parseTypeScript(node.value);
     if (parsed.recoveryRegions.length > 0) {
       state.diagnostics.push(createNarrationDiagnostic(
         "CODE_PARSE_RECOVERY",

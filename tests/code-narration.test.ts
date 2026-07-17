@@ -52,8 +52,202 @@ test("supported fallback applies the required F15 phrases until semantic narrati
     "is less than or equal to", "or", "is greater than", "and", "is equal to",
     "otherwise use", "decrease by", "not", "is not strictly equal to",
   ]) assert.equal(result.text.includes(phrase), true, `missing ${phrase}`);
-  assert.equal(result.diagnostics.filter((diagnostic) => diagnostic.code === "CODE_LITERAL_FALLBACK").length, 2);
+  assert.equal(result.diagnostics.filter((diagnostic) => diagnostic.code === "CODE_LITERAL_FALLBACK").length, 1);
   assert.equal(result.diagnostics.some((diagnostic) => diagnostic.code === "UNSUPPORTED_CODE_LANGUAGE"), false);
+});
+
+test("F08 Python narration has an exact semantic plan, transcript, and no compiler diagnostics", () => {
+  const markdown = [
+    "```python",
+    "from users import Repository",
+    "# Find active users",
+    "limit: int = 2",
+    "def get_active(repo: Repository, names: list[str]) -> list[str]:",
+    "    results = []",
+    "    for name in names:",
+    "        user = repo.get_user(name)",
+    "        if user.active and not user.deleted:",
+    "            results.append(user.name)",
+    "    while len(results) < limit:",
+    "        results += [\"unknown\"]",
+    "    return results",
+    "```",
+  ].join("\n");
+  const compiled = compileMarkdown(markdown);
+  assert.deepEqual(compiled.diagnostics, []);
+  const values = [
+    "Code block. Python. From users import Repository.",
+    "Comment. Find active users.",
+    "Set limit of type integer to two.",
+    "Define function get active. It takes repo of type Repository and names of type list of string. It returns list of string.",
+    "Set results to an empty list.",
+    "For each name in names.",
+    "Set user to the result of calling repo get user with name.",
+    "If user active and not user deleted, then.",
+    "Call results append with user name.",
+    "While the length of results is less than limit.",
+    "Increase results by a list containing the string unknown.",
+    "Return results.",
+    "End code block.",
+  ];
+  const expectedCodeTokens = values.flatMap((value, index) => [
+    ...(index === 0 ? [] : [{ kind: "pause" as const, durationMs: 400 }]),
+    {
+      kind: "text" as const,
+      value,
+      style: { role: index === 1 ? "code-comment" : "code" },
+    },
+  ]);
+  assert.deepEqual(compiled.plan.tokens, [
+    { kind: "boundary", boundary: "document", phase: "start" },
+    { kind: "boundary", boundary: "code-block", phase: "start", metadata: { language: "Python", supported: true } },
+    ...expectedCodeTokens,
+    { kind: "boundary", boundary: "code-block", phase: "end", metadata: { language: "Python", supported: true } },
+    { kind: "boundary", boundary: "document", phase: "end" },
+  ]);
+  assert.equal(
+    convertMarkdown(markdown).text,
+    "Code block. Python. From users import Repository. Comment. Find active users. Set limit of type integer to two. Define function get active. It takes repo of type Repository and names of type list of string. It returns list of string. Set results to an empty list. For each name in names. Set user to the result of calling repo get user with name. If user active and not user deleted, then. Call results append with user name. While the length of results is less than limit. Increase results by a list containing the string unknown. Return results. End code block.",
+  );
+  assert.equal(compiled.plan.tokens.some((token) => token.kind === "text" && token.literal === true), false);
+});
+
+test("Python semantic fixtures cover imports, collections, access, primitives, and configured phrases", () => {
+  const result = compileMarkdown([
+    "```py",
+    "import os",
+    "from pkg import helper",
+    "items = [1, True, None]",
+    "mapping = {\"key\": 2}",
+    "selected = items[0]",
+    "ready = not disabled",
+    "total = left + right",
+    "```",
+  ].join("\n"), { narration: { code: { operators: { "+": "combined with", not: "never" }, block: { linePauseMs: 275 } } } });
+  assert.deepEqual(result.diagnostics, []);
+  const spoken = result.plan.tokens.filter((token) => token.kind === "text").map((token) => token.value).join(" ");
+  for (const phrase of [
+    "Import os", "From pkg import helper", "a list containing one, true, and None",
+    "a dictionary containing the string key mapped to two", "items at zero", "never disabled", "left combined with right",
+  ]) assert.equal(spoken.includes(phrase), true, `missing ${phrase}`);
+  assert.equal(result.plan.tokens.filter((token) => token.kind === "pause").every((token) => token.durationMs === 275), true);
+  assert.equal(result.plan.tokens.some((token) => token.kind === "text" && token.literal === true), false);
+});
+
+test("F15 Python operators are semantic, grouped, deterministic, and lossless", () => {
+  const markdown = [
+    "```python",
+    "def __init__(self):",
+    "    score = (base + bonus - penalty) * factor / divisor % modulus",
+    "    ready = count <= max_count or count > min_count",
+    "    same = left == right",
+    "```",
+  ].join("\n");
+  const first = compileMarkdown(markdown);
+  const second = compileMarkdown(markdown);
+  assert.deepEqual(second, first);
+  assert.deepEqual(first.diagnostics, []);
+  assert.equal(first.plan.tokens.some((token) => token.kind === "text" && token.literal === true), false);
+  const spoken = first.plan.tokens.filter((token) => token.kind === "text").map((token) => token.value).join(" ");
+  for (const phrase of [
+    "dunder init", "base plus bonus minus penalty multiplied by factor divided by divisor modulo modulus",
+    "count is less than or equal to max count or count is greater than min count", "left is equal to right",
+  ]) assert.equal(spoken.includes(phrase), true, `missing ${phrase}`);
+});
+
+test("Python if/else narration owns each condition and body exactly once", () => {
+  const markdown = [
+    "```python",
+    "if score >= limit:",
+    "    accepted_marker = 1",
+    "else:",
+    "    rejected_marker = 2",
+    "```",
+  ].join("\n");
+  const compiled = compileMarkdown(markdown);
+  assert.deepEqual(compiled.diagnostics, []);
+  assert.deepEqual(
+    compiled.plan.tokens.filter((token) => token.kind === "text").map((token) => token.value),
+    [
+      "Code block. Python. If score is greater than or equal to limit, then.",
+      "Set accepted marker to one.",
+      "Otherwise.",
+      "Set rejected marker to two.",
+      "End code block.",
+    ],
+  );
+  assert.equal(
+    convertMarkdown(markdown).text,
+    "Code block. Python. If score is greater than or equal to limit, then. Set accepted marker to one. Otherwise. Set rejected marker to two. End code block.",
+  );
+  assert.equal(compiled.plan.tokens.some((token) => token.kind === "text" && token.literal === true), false);
+  const spoken = compiled.plan.tokens.filter((token) => token.kind === "text").map((token) => token.value).join(" ");
+  assert.equal((spoken.match(/accepted marker/gu) ?? []).length, 1);
+  assert.equal((spoken.match(/rejected marker/gu) ?? []).length, 1);
+});
+
+test("Python if/elif/else narration is exact, ordered, semantic, and configured", () => {
+  const markdown = [
+    "```python",
+    "if left == right:",
+    "    equal_marker = 1",
+    "elif left < right:",
+    "    lower_marker = 2",
+    "else:",
+    "    greater_marker = 3",
+    "```",
+  ].join("\n");
+  const compiled = compileMarkdown(markdown, { narration: { code: {
+    operators: { "==": "matches", "<": "precedes" },
+    block: { linePauseMs: 225 },
+  } } });
+  assert.deepEqual(compiled.diagnostics, []);
+  assert.deepEqual(
+    compiled.plan.tokens.filter((token) => token.kind === "text").map((token) => token.value),
+    [
+      "Code block. Python. If left matches right, then.",
+      "Set equal marker to one.",
+      "Otherwise if left precedes right, then.",
+      "Set lower marker to two.",
+      "Otherwise.",
+      "Set greater marker to three.",
+      "End code block.",
+    ],
+  );
+  assert.equal(compiled.plan.tokens.filter((token) => token.kind === "pause").every((token) => token.durationMs === 225), true);
+  assert.equal(compiled.plan.tokens.some((token) => token.kind === "text" && token.literal === true), false);
+  const spoken = compiled.plan.tokens.filter((token) => token.kind === "text").map((token) => token.value).join(" ");
+  for (const marker of ["equal marker", "lower marker", "greater marker"]) {
+    assert.equal(spoken.split(marker).length - 1, 1, `duplicate or missing ${marker}`);
+  }
+});
+
+test("unsupported complete Python constructs own one literal fallback interval without duplicating content", () => {
+  for (const [source, marker] of [
+    ["class Worker:\n    marker = \"class_owned\"", "class_owned"],
+    ["try:\n    risky_call()\nexcept Error:\n    marker = \"try_owned\"", "try_owned"],
+    ["async def fetch():\n    marker = \"async_owned\"", "async_owned"],
+  ] as const) {
+    const result = compileMarkdown(`\`\`\`python\n${source}\n\`\`\``);
+    assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), ["CODE_LITERAL_FALLBACK"]);
+    const literal = result.plan.tokens.flatMap((token) => token.kind === "text" && token.literal === true ? [token] : []);
+    assert.ok(literal.length > 0);
+    assert.ok(literal.every((token) => token.style?.role === "code"));
+    const spoken = literal.map((token) => token.value).join(" ");
+    assert.equal(spoken.split(marker).length - 1, 1, `duplicate or missing fallback marker ${marker}`);
+  }
+});
+
+test("F11 Python recovery falls back once for the whole block and preserves every source line", () => {
+  const result = compileMarkdown("```python\nresult = get_user(\nif result != None:\n    return result\n```");
+  assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), ["CODE_PARSE_RECOVERY", "CODE_LITERAL_FALLBACK"]);
+  const literal = result.plan.tokens.flatMap((token) => token.kind === "text" && token.literal === true ? [token] : []);
+  assert.ok(literal.length > 0);
+  assert.ok(literal.every((token) => token.style?.role === "code"));
+  const spoken = literal.map((token) => token.value).join(" ");
+  assert.equal((spoken.match(/result/gu) ?? []).length, 3);
+  assert.equal((spoken.match(/get user/gu) ?? []).length, 1);
+  assert.equal(spoken.includes("is not equal to None"), true);
 });
 
 test("inline code uses light lexical narration, inline style, and no block boundary", () => {
@@ -129,7 +323,7 @@ test("aliases are supported, missing tags remain neutral, and unknown language l
     ),
     [{ language: "Python", supported: true }, { language: "TypeScript", supported: true }],
   );
-  assert.equal(aliases.diagnostics.filter((diagnostic) => diagnostic.code === "CODE_LITERAL_FALLBACK").length, 2);
+  assert.equal(aliases.diagnostics.filter((diagnostic) => diagnostic.code === "CODE_LITERAL_FALLBACK").length, 1);
   assert.equal(aliases.diagnostics.some((diagnostic) => diagnostic.code === "UNSUPPORTED_CODE_LANGUAGE"), false);
 
   const missing = convertMarkdown("```\nx = 1\n```");
