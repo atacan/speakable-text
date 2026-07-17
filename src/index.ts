@@ -30,12 +30,18 @@ export {
   defaultNarrationConfiguration,
   resolveNarrationConfiguration,
 } from "./narration/configuration.js";
+export { DEFAULT_OPERATOR_PHRASES } from "./code/operators.js";
+export type {
+  CodeOperator,
+  OperatorPhrasebook,
+} from "./code/operators.js";
 export type {
   BlockquoteNarrationContext,
   CodeBlockNarrationConfiguration,
   CodeBlockNarrationContext,
   CodeBlockNarrationOverrides,
   CodeNarrationConfiguration,
+  CodeNarrationMode,
   CodeNarrationOverrides,
   DocumentNarrationContext,
   EmphasisNarrationContext,

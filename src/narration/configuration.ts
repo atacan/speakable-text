@@ -91,8 +91,10 @@ export interface CodeBlockNarrationConfiguration extends NarrationNodeRule<CodeB
   readonly linePauseMs: number;
 }
 
+export type CodeNarrationMode = "natural";
+
 export interface CodeNarrationConfiguration {
-  readonly mode: "natural";
+  readonly mode: CodeNarrationMode;
   readonly operators: OperatorPhrasebook;
   readonly inline: NarrationNodeRule<InlineCodeNarrationContext>;
   readonly block: CodeBlockNarrationConfiguration;
@@ -190,7 +192,7 @@ export interface CodeBlockNarrationOverrides extends NarrationNodeRuleOverrides<
 }
 
 export interface CodeNarrationOverrides {
-  readonly mode?: "natural";
+  readonly mode?: CodeNarrationMode;
   readonly operators?: Partial<Record<CodeOperator, string>>;
   readonly inline?: NarrationNodeRuleOverrides<InlineCodeNarrationContext>;
   readonly block?: CodeBlockNarrationOverrides;
