@@ -26,7 +26,11 @@ function pauseText(durationMs: number, renderedSoFar: string, followingText: str
   if (finalCharacter !== undefined && finalCharacter.trim().length === 0) {
     return "";
   }
-  if (followingText !== undefined && /^\s/u.test(followingText)) return "";
+  // A structural pause immediately before source punctuation should not add a
+  // second punctuation mark. This is especially common for inline code at the
+  // end of a sentence, where the compiler emits the code's trailing pause
+  // before the paragraph's literal period.
+  if (followingText !== undefined && /^[\s.,!?;:)\]}]/u.test(followingText)) return "";
 
   const punctuation = finalPunctuation(renderedSoFar);
   const hasSentencePunctuation = punctuation !== undefined && ".!?".includes(punctuation);
@@ -106,6 +110,8 @@ function reportApproximatedPause(
  *   Next to whitespace already carried by a text token, no duplicate
  *   punctuation or whitespace is added.
  * - At the end of output, no trailing punctuation or whitespace is added.
+ * - A compiler boundary between otherwise adjacent words becomes sentence
+ *   punctuation (or one space when the preceding text is already punctuated).
  */
 export function createPlainTextRenderer(): NarrationRenderer {
   return Object.freeze({
@@ -121,6 +127,7 @@ export function createPlainTextRenderer(): NarrationRenderer {
       assertNarrationPlan(plan);
 
       let text = "";
+      let boundarySinceLastText = false;
       const diagnostics: NarrationDiagnostic[] = [];
       const seen = new Set<string>();
       let lastTextIndex = -1;
@@ -133,10 +140,22 @@ export function createPlainTextRenderer(): NarrationRenderer {
       for (let index = 0; index < plan.tokens.length; index += 1) {
         const token = plan.tokens[index];
         if (token === undefined) continue;
-        if (token.kind === "boundary") continue;
+        if (token.kind === "boundary") {
+          if (text.length > 0) boundarySinceLastText = true;
+          continue;
+        }
         if (token.kind === "text") {
           reportUnsupportedStyles(token.style, diagnostics, seen);
+          if (
+            boundarySinceLastText &&
+            !/\s$/u.test(text) &&
+            !/^[\s.,!?;:)\]}]/u.test(token.value)
+          ) {
+            const punctuation = finalPunctuation(text);
+            text += punctuation !== undefined && ".,!?;:".includes(punctuation) ? " " : ". ";
+          }
           text += token.value;
+          boundarySinceLastText = false;
           continue;
         }
 

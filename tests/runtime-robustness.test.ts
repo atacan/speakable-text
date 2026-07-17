@@ -70,6 +70,7 @@ test("S06 representative response preserves fixture order and key relationships 
     position = next;
   }
   assert.doesNotMatch(result.text, /(?:```|\]\(https?:|<\/?(?:aside|strong)>|^>|\| --- \|)/mu);
+  assert.doesNotMatch(result.text, /(?:teamTable|table\.Code|block\.Code|block\.Before)/u);
   assert.equal(result.diagnostics.some((diagnostic) => diagnostic.severity === "error"), false);
   assertBalanced(representativeAgentResponse);
 });

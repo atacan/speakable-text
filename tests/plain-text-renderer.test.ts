@@ -86,6 +86,34 @@ test("a pause next to source whitespace does not add punctuation or duplicate sp
   assert.equal(result.text, "before middle after");
 });
 
+test("a pause before source punctuation cannot introduce duplicate punctuation", () => {
+  const result = renderNarration({
+    schemaVersion: 1,
+    tokens: [
+      { kind: "text", value: "Use " },
+      { kind: "text", value: "user I D", style: { role: "inline-code" }, literal: true },
+      { kind: "pause", durationMs: 150 },
+      { kind: "text", value: "." },
+    ],
+  });
+  assert.equal(result.text, "Use user I D.");
+});
+
+test("ignored structural boundaries still separate otherwise adjacent words", () => {
+  const result = renderNarration({
+    schemaVersion: 1,
+    tokens: [
+      { kind: "boundary", boundary: "list", phase: "start" },
+      { kind: "text", value: "Final item" },
+      { kind: "boundary", boundary: "list", phase: "end" },
+      { kind: "boundary", boundary: "table", phase: "start" },
+      { kind: "text", value: "Table." },
+      { kind: "boundary", boundary: "table", phase: "end" },
+    ],
+  });
+  assert.equal(result.text, "Final item. Table.");
+});
+
 test("unsupported style diagnostics are stable and deduplicated by code and feature", () => {
   const plan: NarrationPlan = {
     schemaVersion: 1,

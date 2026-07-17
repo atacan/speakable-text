@@ -408,6 +408,10 @@ test("inline code uses light lexical narration, inline style, and no block bound
     literal: true,
   });
   assert.deepEqual(result.diagnostics.filter((diagnostic) => diagnostic.code.startsWith("CODE_")), []);
+  assert.equal(
+    convertMarkdown("Use `get_user_id != expectedID`.").text,
+    "Use get user I D is not equal to expected I D.",
+  );
 });
 
 test("unsupported fenced code is bounded, announced, preserved by line, and diagnosed", () => {
