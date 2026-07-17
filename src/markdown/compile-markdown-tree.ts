@@ -21,6 +21,7 @@ import { narrateLexicalCode } from "../code/narrate-lexical-code.js";
 import { parsePython } from "../code/python/parse-python.js";
 import { narratePython } from "../code/python/narrate-python.js";
 import { parseTypeScript } from "../code/typescript/parse-typescript.js";
+import { narrateTypeScript } from "../code/typescript/narrate-typescript.js";
 import {
   cloneAndValidateNarrationFragments,
   defaultNarrationConfiguration,
@@ -597,6 +598,29 @@ function compileCodeBlock(
           `Used deterministic lexical narration for unsupported ${language ?? "code"} constructs.`,
         ));
       }
+    } else if (route === "typescript") {
+      const parsed = parseTypeScript(node.value);
+      if (parsed.recoveryRegions.length > 0) {
+        appendFragments(body, narrateLexicalCode(node.value, codeOptions), undefined);
+        body.diagnostics.push(createNarrationDiagnostic(
+          "CODE_PARSE_RECOVERY",
+          "warning",
+          `Recovered incomplete ${language ?? "supported"} code without discarding content.`,
+        ));
+        body.diagnostics.push(createNarrationDiagnostic(
+          "CODE_LITERAL_FALLBACK",
+          "info",
+          `Used deterministic lexical narration for recovered ${language ?? "code"}.`,
+        ));
+      } else {
+        const narrated = narrateTypeScript(node.value, parsed.tree, codeOptions);
+        appendFragments(body, narrated.fragments, undefined);
+        if (narrated.usedLiteralFallback) body.diagnostics.push(createNarrationDiagnostic(
+          "CODE_LITERAL_FALLBACK",
+          "info",
+          `Used deterministic lexical narration for unsupported ${language ?? "code"} constructs.`,
+        ));
+      }
     } else {
       appendFragments(body, narrateLexicalCode(node.value, codeOptions), undefined);
     }
@@ -616,20 +640,6 @@ function compileCodeBlock(
       "UNSUPPORTED_CODE_LANGUAGE",
       "warning",
       `Used deterministic lexical fallback for unsupported code language ${JSON.stringify(language ?? "unknown")}.`,
-    ));
-  } else if (supported && !replaced && route === "typescript") {
-    const parsed = parseTypeScript(node.value);
-    if (parsed.recoveryRegions.length > 0) {
-      state.diagnostics.push(createNarrationDiagnostic(
-        "CODE_PARSE_RECOVERY",
-        "warning",
-        `Recovered incomplete ${language ?? "supported"} code without discarding content.`,
-      ));
-    }
-    state.diagnostics.push(createNarrationDiagnostic(
-      "CODE_LITERAL_FALLBACK",
-      "info",
-      `Used deterministic lexical narration until semantic ${language ?? "code"} narration is available.`,
     ));
   }
 }

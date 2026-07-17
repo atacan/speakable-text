@@ -36,7 +36,7 @@ test("the centralized default phrasebook contains every required operator phrase
   });
 });
 
-test("supported fallback applies the required F15 phrases until semantic narration lands", () => {
+test("F15 semantic narration applies required phrases across Python and TypeScript", () => {
   const result = convertMarkdown([
     "```python",
     "__init__ = (base + bonus - penalty) * factor / divisor % modulus",
@@ -50,9 +50,9 @@ test("supported fallback applies the required F15 phrases until semantic narrati
   for (const phrase of [
     "dunder init", "plus", "minus", "multiplied by", "divided by", "modulo",
     "is less than or equal to", "or", "is greater than", "and", "is equal to",
-    "otherwise use", "decrease by", "not", "is not strictly equal to",
+    "otherwise use", "Decrease remaining by", "not", "is not strictly equal to",
   ]) assert.equal(result.text.includes(phrase), true, `missing ${phrase}`);
-  assert.equal(result.diagnostics.filter((diagnostic) => diagnostic.code === "CODE_LITERAL_FALLBACK").length, 1);
+  assert.equal(result.diagnostics.filter((diagnostic) => diagnostic.code === "CODE_LITERAL_FALLBACK").length, 0);
   assert.equal(result.diagnostics.some((diagnostic) => diagnostic.code === "UNSUPPORTED_CODE_LANGUAGE"), false);
 });
 
@@ -110,6 +110,149 @@ test("F08 Python narration has an exact semantic plan, transcript, and no compil
     "Code block. Python. From users import Repository. Comment. Find active users. Set limit of type integer to two. Define function get active. It takes repo of type Repository and names of type list of string. It returns list of string. Set results to an empty list. For each name in names. Set user to the result of calling repo get user with name. If user active and not user deleted, then. Call results append with user name. While the length of results is less than limit. Increase results by a list containing the string unknown. Return results. End code block.",
   );
   assert.equal(compiled.plan.tokens.some((token) => token.kind === "text" && token.literal === true), false);
+});
+
+test("F09 TypeScript narration has an exact semantic plan, transcript, and no compiler diagnostics", () => {
+  const markdown = [
+    "```ts",
+    "import { getUser } from \"./users\";",
+    "// Find an active user",
+    "const names: string[] = [\"Ada\", \"Lin\"];",
+    "function findActive(limit: number, enabled: boolean): string {",
+    "  let index = 0;",
+    "  while (index < limit && enabled) {",
+    "    const user = getUser(names[index]);",
+    "    if (user?.status === \"active\" || user.score >= 10) {",
+    "      return user.name;",
+    "    }",
+    "    index += 1;",
+    "  }",
+    "  for (const name of names) {",
+    "    getUser(name);",
+    "  }",
+    "  return \"none\";",
+    "}",
+    "```",
+  ].join("\n");
+  const values = [
+    "Code block. TypeScript. Import get user from dot slash users.",
+    "Comment. Find an active user.",
+    "Set constant names of type array of string to a list containing the strings Ada and Lin.",
+    "Define function find active. It takes limit of type number and enabled of type boolean. It returns string.",
+    "Set index to zero.",
+    "While index is less than limit and enabled.",
+    "Set constant user to the result of calling get user with names at index.",
+    "If user optionally access status is strictly equal to the string active or user score is greater than or equal to ten, then.",
+    "Return user name.",
+    "Increase index by one.",
+    "For each name of names.",
+    "Call get user with name.",
+    "Return the string none.",
+    "End code block.",
+  ];
+  const compiled = compileMarkdown(markdown);
+  assert.deepEqual(compiled.diagnostics, []);
+  assert.deepEqual(compiled.plan.tokens, [
+    { kind: "boundary", boundary: "document", phase: "start" },
+    { kind: "boundary", boundary: "code-block", phase: "start", metadata: { language: "TypeScript", supported: true } },
+    ...values.flatMap((value, index) => [
+      ...(index === 0 ? [] : [{ kind: "pause" as const, durationMs: 400 }]),
+      { kind: "text" as const, value, style: { role: index === 1 ? "code-comment" : "code" } },
+    ]),
+    { kind: "boundary", boundary: "code-block", phase: "end", metadata: { language: "TypeScript", supported: true } },
+    { kind: "boundary", boundary: "document", phase: "end" },
+  ]);
+  assert.equal(convertMarkdown(markdown).text, values.join(" "));
+  assert.equal(compiled.plan.tokens.some((token) => token.kind === "text" && token.literal === true), false);
+});
+
+test("TypeScript semantic fixtures cover literals, objects, branches, access, and configured phrases", () => {
+  const result = compileMarkdown([
+    "```typescript",
+    "const empty = [];",
+    "const values = [1, true, null, undefined];",
+    "const record = {name: \"Ada\", enabled: false};",
+    "let chosen = primary ?? fallbackValue;",
+    "if (!disabled) { chosen = record.name; } else if (enabled) { chosen = values[0]; } else { chosen = null; }",
+    "```",
+  ].join("\n"), { narration: { code: { operators: { "??": "or default to", "!": "never" }, block: { linePauseMs: 230 } } } });
+  assert.deepEqual(result.diagnostics, []);
+  const spoken = result.plan.tokens.filter((token) => token.kind === "text").map((token) => token.value).join(" ");
+  for (const phrase of [
+    "an empty list", "one, true, null, and undefined", "an object containing name set to the string Ada and enabled set to false",
+    "primary or default to fallback value", "If never disabled, then", "Otherwise if enabled, then", "Otherwise", "values at zero",
+  ]) assert.equal(spoken.includes(phrase), true, `missing ${phrase}`);
+  assert.equal(result.plan.tokens.filter((token) => token.kind === "pause").every((token) => token.durationMs === 230), true);
+  assert.equal(result.plan.tokens.some((token) => token.kind === "text" && token.literal === true), false);
+});
+
+test("F15 TypeScript operators are semantic, grouped, deterministic, and lossless", () => {
+  const markdown = "```ts\nconst score = (base + bonus - penalty) * factor / divisor % modulus;\nconst ready = count <= maxCount || count > minCount;\nconst same = left !== right;\n```";
+  const first = compileMarkdown(markdown);
+  assert.deepEqual(compileMarkdown(markdown), first);
+  assert.deepEqual(first.diagnostics, []);
+  assert.equal(first.plan.tokens.some((token) => token.kind === "text" && token.literal === true), false);
+  const spoken = first.plan.tokens.filter((token) => token.kind === "text").map((token) => token.value).join(" ");
+  for (const phrase of [
+    "base plus bonus minus penalty multiplied by factor divided by divisor modulo modulus",
+    "count is less than or equal to max count or count is greater than min count", "left is not strictly equal to right",
+  ]) assert.equal(spoken.includes(phrase), true, `missing ${phrase}`);
+});
+
+test("C-style TypeScript for loops narrate initializer, condition, update, and body exactly once", () => {
+  const markdown = [
+    "```ts",
+    "for (let i = 0; i < limit; i += 1) { visitAugmentedMarker(i); }",
+    "for (let j = 0; j < limit; j++) { visitIncrementMarker(j); }",
+    "```",
+  ].join("\n");
+  const compiled = compileMarkdown(markdown, { narration: { code: { block: { linePauseMs: 240 } } } });
+  assert.deepEqual(compiled.diagnostics, []);
+  assert.equal(compiled.plan.tokens.some((token) => token.kind === "text" && token.literal === true), false);
+  const values = compiled.plan.tokens.filter((token) => token.kind === "text").map((token) => token.value);
+  assert.deepEqual(values, [
+    "Code block. TypeScript. For loop.",
+    "Set i to zero.",
+    "Continue while i is less than limit.",
+    "After each iteration, increase i by one.",
+    "Call visit augmented marker with i.",
+    "For loop.",
+    "Set j to zero.",
+    "Continue while j is less than limit.",
+    "After each iteration, increase j by one.",
+    "Call visit increment marker with j.",
+    "End code block.",
+  ]);
+  assert.equal(compiled.plan.tokens.filter((token) => token.kind === "pause").every((token) => token.durationMs === 240), true);
+  const spoken = values.join(" ");
+  assert.equal((spoken.match(/visit augmented marker/gu) ?? []).length, 1);
+  assert.equal((spoken.match(/visit increment marker/gu) ?? []).length, 1);
+});
+
+test("unsupported complete TypeScript constructs own one literal fallback interval without duplicating content", () => {
+  for (const [source, marker] of [
+    ["class Worker { marker = \"class_owned\"; }", "class_owned"],
+    ["try { riskyCall(); } catch (error) { const marker = \"try_owned\"; }", "try_owned"],
+    ["async function fetchData() { const marker = \"async_owned\"; }", "async_owned"],
+  ] as const) {
+    const result = compileMarkdown(`\`\`\`ts\n${source}\n\`\`\``);
+    assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), ["CODE_LITERAL_FALLBACK"]);
+    const literal = result.plan.tokens.flatMap((token) => token.kind === "text" && token.literal === true ? [token] : []);
+    assert.ok(literal.length > 0);
+    assert.ok(literal.every((token) => token.style?.role === "code"));
+    assert.equal(literal.map((token) => token.value).join(" ").split(marker).length - 1, 1);
+  }
+});
+
+test("malformed TypeScript recovers through one whole-block literal narration", () => {
+  const result = compileMarkdown("```ts\nconst user = getUser(\nif (user?.active) { return user.name;\n```");
+  assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), ["CODE_PARSE_RECOVERY", "CODE_LITERAL_FALLBACK"]);
+  const literal = result.plan.tokens.flatMap((token) => token.kind === "text" && token.literal === true ? [token] : []);
+  assert.ok(literal.length > 0);
+  assert.ok(literal.every((token) => token.style?.role === "code"));
+  const spoken = literal.map((token) => token.value).join(" ");
+  assert.equal((spoken.match(/get user/gu) ?? []).length, 1);
+  assert.equal((spoken.match(/user name/gu) ?? []).length, 1);
 });
 
 test("Python semantic fixtures cover imports, collections, access, primitives, and configured phrases", () => {
@@ -323,7 +466,7 @@ test("aliases are supported, missing tags remain neutral, and unknown language l
     ),
     [{ language: "Python", supported: true }, { language: "TypeScript", supported: true }],
   );
-  assert.equal(aliases.diagnostics.filter((diagnostic) => diagnostic.code === "CODE_LITERAL_FALLBACK").length, 1);
+  assert.equal(aliases.diagnostics.filter((diagnostic) => diagnostic.code === "CODE_LITERAL_FALLBACK").length, 0);
   assert.equal(aliases.diagnostics.some((diagnostic) => diagnostic.code === "UNSUPPORTED_CODE_LANGUAGE"), false);
 
   const missing = convertMarkdown("```\nx = 1\n```");
