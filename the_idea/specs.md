@@ -1,6 +1,6 @@
 # Markdown-to-Speakable-Text Library Specification
 
-**Status:** Draft v0.1
+**Status:** Draft v0.2
 **Target language:** TypeScript
 **Primary environments:** Browser and server-side JavaScript runtimes
 **Primary use case:** Converting AI-generated Markdown, especially coding-agent output, into natural, deterministic text suitable for text-to-speech systems
@@ -99,6 +99,11 @@ The first version will not:
 - Synthesize or return audio.
 - Call text-to-speech APIs.
 - Manage API credentials.
+- Estimate provider cost, token usage, or request limits.
+- Detect or select a text-to-speech provider or model.
+- Support multiple speakers, speaker assignment, or dialogue synthesis.
+- Infer or return generated-audio duration, timestamps, or word alignment.
+- Detect, validate, translate, or return metadata about the input language.
 - Provide a command-line interface.
 - Provide a web server.
 - Provide an end-user application.
@@ -159,6 +164,8 @@ Examples include:
 A deterministic component that converts narration tokens into a string accepted by a target text-to-speech system.
 
 A renderer does not call the provider.
+
+A renderer is sometimes called a provider adapter, but it is not an API client. It only serializes a narration plan into a target text format; it does not select a model, validate request limits, estimate cost, manage credentials, or send requests.
 
 ---
 
@@ -280,12 +287,14 @@ export type NarrationRate =
   | "slow"
   | "normal"
   | "fast"
-  | "very-fast";
+  | "very-fast"
+  | (string & {});
 
 export type NarrationEmphasis =
   | "reduced"
   | "moderate"
-  | "strong";
+  | "strong"
+  | (string & {});
 
 export interface NarrationStyle {
   role?: NarrationRole;
@@ -344,9 +353,18 @@ export type NarrationToken =
   | BoundaryNarrationToken;
 
 export interface NarrationPlan {
+  readonly schemaVersion: 1;
   readonly tokens: readonly NarrationToken[];
 }
 ```
+
+The style types are open string unions rather than runtime enums. Their predefined values represent portable narration semantics and provide editor autocomplete, while users may also provide any custom string for `role`, `tone`, `rate`, or `emphasis`. A renderer may map a custom value, approximate it, or ignore it with a diagnostic while preserving the spoken text.
+
+A narration role describes presentation intent, such as heading or code. It does not identify a speaker or request a separate voice. Version 1 always represents a single narration stream.
+
+`NarrationPlan` is a public, JSON-compatible wire format. It must contain only JSON-serializable data and must not contain parser AST nodes, functions, class instances, or runtime handles. Consumers may serialize it with `JSON.stringify`, store or transmit it, parse it later, and pass it to a compatible renderer. `schemaVersion` identifies the wire-format version independently of the npm package version.
+
+A pause duration is a requested narration hint, not an observed audio duration or timestamp. The library cannot know actual timing because audio generation happens outside the library.
 
 Boundary tokens are not necessarily spoken. They preserve useful semantic context for renderers without requiring another tree.
 
@@ -362,6 +380,7 @@ Before a narration plan is returned, the compiler must normalize it deterministi
 * Merge adjacent text tokens when their style and `literal` values are identical.
 * Collapse adjacent pause tokens with no intervening boundary to the longest requested duration.
 * Require pause durations to be finite, non-negative numbers.
+* Require numeric boundary metadata values to be finite.
 * Emit balanced, properly nested boundary pairs.
 
 Nested styles are merged from outer content to inner content. An inner style overrides only the properties it explicitly defines.
@@ -485,6 +504,11 @@ export type NarrationTemplateFactory<Context> = (
 
 ```ts
 export interface NarrationNodeRule<Context> {
+  /**
+   * Omits the node and its complete subtree from narration.
+   * Defaults to false.
+   */
+  readonly skip?: boolean;
   readonly before?: readonly NarrationFragment[];
   readonly after?: readonly NarrationFragment[];
   readonly contentStyle?: NarrationStyle;
@@ -504,7 +528,9 @@ Callbacks must:
 * Receive immutable context.
 * Avoid modifying parser AST nodes.
 
-Asynchronous callbacks are not part of the initial configuration contract. A `compile` callback replaces that rule's `before`, compiled content, `contentStyle`, and `after` behavior; its returned fragments are otherwise preserved subject to plan normalization.
+Asynchronous callbacks are not part of the initial configuration contract. When `skip` is `true`, the compiler omits that node and its complete subtree without invoking its callback. Otherwise, a `compile` callback replaces that rule's `before`, compiled content, `contentStyle`, and `after` behavior; its returned fragments are preserved subject to plan normalization.
+
+Skipping is always opt-in. Every node rule defaults to `skip: false`, and the default profile does not skip supported visible content. Content-preservation guarantees exclude nodes that the user explicitly skips.
 
 ---
 
@@ -519,11 +545,13 @@ Configuration will be resolved in this order:
 
 Front matter and inline narration directives will not affect configuration in version 1.
 
+Input is treated as ordinary Markdown written for visual reading. Directive-like text inside the document has no special authority and cannot change narration configuration.
+
 ---
 
 ## 13. Default narration philosophy
 
-Version 1's built-in narration language is English. Built-in behavior must not depend on the host environment's locale, and version 1 does not expose a locale option.
+Version 1's built-in narration language is English. Built-in behavior must not depend on the host environment's locale, and version 1 does not expose a locale option. The library does not detect or emit language metadata; the caller remains responsible for choosing the language and model used during later speech synthesis.
 
 The default profile should sound like a human reading content rather than a screen reader exposing every structural detail.
 
@@ -802,6 +830,7 @@ export type TableNarrationMode =
   | "cells-only";
 
 export interface TableNarrationConfiguration {
+  readonly skip?: boolean;
   readonly mode: TableNarrationMode;
   readonly announceTableStart: boolean;
   readonly announceTableEnd: boolean;
@@ -815,6 +844,7 @@ Default values:
 
 ```ts
 {
+  skip: false,
   mode: "header-per-cell",
   announceTableStart: true,
   announceTableEnd: true,
@@ -1119,6 +1149,8 @@ export interface NarrationRenderer {
 }
 ```
 
+Capability booleans are high-level summaries, not promises that every predefined or custom style value is supported. A renderer must decide support for each encountered semantic value using its own explicit mapping. For example, a renderer may support some tones while approximating or ignoring others. `exactPauses` means the output format can encode the requested pause duration; it does not mean a speech model will honor it exactly or reveal the resulting audio timing.
+
 A renderer must:
 
 * Be deterministic.
@@ -1128,6 +1160,7 @@ A renderer must:
 * Report unsupported or approximated features.
 * Avoid exposing API credentials.
 * Avoid assuming that its output will immediately be sent to a provider.
+* Reject an unsupported narration-plan `schemaVersion` before rendering.
 
 Every `TextNarrationToken.value`, including values originating in user configuration, must be treated as spoken content and escaped for the target format. Provider control syntax may be introduced only by renderer logic, never by passing markup through a text token.
 
@@ -1192,6 +1225,10 @@ Provider-specific behavior belongs in renderer configuration.
 
 The Markdown and code compilers must not directly output ElevenLabs tags, SSML elements, or another provider’s syntax.
 
+Future official renderer profiles may encode the library's known mappings, limitations, and fallbacks for a specific provider format or model family, including SSML-style markup and provider-specific audio tags. Such a profile must identify its target explicitly. The caller chooses the profile; the library does not inspect or infer which provider or model will receive the result.
+
+Provider knowledge is advisory and versioned because provider capabilities can change. An official renderer must degrade unsupported semantics according to section 35 and must never make a network request, even to discover capabilities.
+
 ---
 
 ## 35. Unsupported renderer features
@@ -1247,6 +1284,7 @@ The core library must:
 * Be usable inside server applications.
 * Publish TypeScript declarations.
 * Prefer an ESM-first design.
+* Be distributed as an npm-compatible library package without a version 1 executable or CLI entry point.
 
 Version 1 parser dependencies must be ready for synchronous use when `convertMarkdown` is called. Parser packages that require asynchronous runtime initialization are not suitable for the version 1 synchronous API unless that initialization is completed entirely during ordinary module loading without a separate public lifecycle.
 
@@ -1270,7 +1308,7 @@ The implementation must not use:
 
 * Random values.
 * Time-dependent behavior.
-* Locale-dependent behavior unless a locale is explicitly configured.
+* Locale-dependent behavior.
 * Network services.
 * Large language models.
 * Machine-learning inference.
@@ -1335,7 +1373,7 @@ Snapshot changes affecting default narration should be treated as user-visible b
 Version 1 is complete when:
 
 1. A Markdown string can be converted synchronously.
-2. Conversion returns a typed, normalized narration plan.
+2. Conversion returns a typed, normalized narration plan with `schemaVersion: 1` that survives a JSON serialization and parse round trip.
 3. Conversion returns plain speakable text.
 4. GitHub Flavored Markdown headings, paragraphs, emphasis, links, lists, blockquotes, tables, images, inline code, and code blocks are handled.
 5. The required Python constructs in section 26 receive AST-based natural narration.
@@ -1344,7 +1382,7 @@ Version 1 is complete when:
 8. Unsupported Markdown preserves visible child text or uses literal fallback when text cannot otherwise be recovered.
 9. Empty nodes are ignored.
 10. Invisible characters are removed with diagnostics.
-11. Users can configure before and after fragments for major Markdown node types.
+11. Users can configure before and after fragments and can explicitly skip major Markdown node types, including tables and code blocks.
 12. Users can configure heading behavior by level.
 13. Users can configure table narration behavior.
 14. Users can configure code phrases and code-block announcements.
@@ -1352,7 +1390,7 @@ Version 1 is complete when:
 16. The core library performs no network requests.
 17. Browser and server builds pass the same narration fixtures.
 18. Output is stable enough for snapshot testing.
-19. Representative fixtures demonstrate that visible content is not silently lost, document order and relationships are preserved, and raw Markdown delimiters are not spoken except during explicit literal fallback.
+19. Representative fixtures demonstrate that visible content is not silently lost unless explicitly skipped by configuration, document order and relationships are preserved, and raw Markdown delimiters are not spoken except during explicit literal fallback.
 20. Required semantic code fixtures match documented golden narration expectations, and a manual listening review finds no blocking comprehension issue in the representative end-to-end fixtures.
 
 ---
@@ -1375,7 +1413,7 @@ The following are intentionally deferred:
 * Chunking.
 * Source-to-audio synchronization.
 * Word timestamps.
-* Math narration.
+* Mathematical syntax recognition and narration.
 * Mermaid and diagram interpretation.
 * Emoji interpretation.
 * Advanced URL pronunciation.
@@ -1390,6 +1428,8 @@ The following are intentionally deferred:
 * Multilingual narration.
 
 The public architecture should allow these features to be added without replacing the narration token model.
+
+In version 1, Mermaid fences use unsupported-code fallback and mathematical syntax remains ordinary text. Neither receives semantic interpretation.
 
 ---
 
