@@ -14,6 +14,11 @@ const shared = {
   target: ["es2022"],
   sourcemap: true,
   conditions: ["import", "default"],
+  // Lezer's optional debug tracing probes process.env.LOG. Browser conversion
+  // must not observe a bundler-injected process shim or host configuration.
+  define: {
+    "process.env.LOG": "undefined",
+  },
   // The dependency's `browser` export creates a DOM element at module load.
   // Its pure-JS default export has the same API and supports pages and workers.
   alias: {
