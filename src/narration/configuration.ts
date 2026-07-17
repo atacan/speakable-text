@@ -40,6 +40,43 @@ export interface LinkNarrationContext {
   readonly reference?: string;
 }
 
+export interface ListNarrationContext {
+  readonly ordered: boolean;
+  readonly depth: number;
+  readonly itemCount: number;
+  readonly start?: number;
+  readonly text: string;
+}
+
+export interface ListItemNarrationContext {
+  readonly ordered: boolean;
+  readonly depth: number;
+  readonly index: number;
+  readonly number?: number;
+  readonly checked?: boolean;
+  readonly text: string;
+}
+
+export interface BlockquoteNarrationContext {
+  readonly text: string;
+}
+
+export interface ImageNarrationContext {
+  readonly alt?: string;
+  readonly destination?: string;
+  readonly title?: string;
+  readonly reference?: string;
+}
+
+export interface ListItemNarrationRule extends NarrationNodeRule<ListItemNarrationContext> {
+  readonly itemSeparator: readonly NarrationFragment[];
+  readonly nestedItemSeparator: readonly NarrationFragment[];
+  readonly orderedPrefix: NarrationTemplateFactory<ListItemNarrationContext>;
+  readonly completedTaskPrefix: readonly NarrationFragment[];
+  readonly incompleteTaskPrefix: readonly NarrationFragment[];
+  readonly nestingPrefix: NarrationTemplateFactory<ListItemNarrationContext>;
+}
+
 export type HeadingLevel = HeadingNarrationContext["level"];
 
 export interface NarrationConfiguration {
@@ -49,6 +86,11 @@ export interface NarrationConfiguration {
   readonly italic: NarrationNodeRule<EmphasisNarrationContext>;
   readonly strong: NarrationNodeRule<StrongNarrationContext>;
   readonly link: NarrationNodeRule<LinkNarrationContext>;
+  readonly orderedList: NarrationNodeRule<ListNarrationContext>;
+  readonly unorderedList: NarrationNodeRule<ListNarrationContext>;
+  readonly listItem: ListItemNarrationRule;
+  readonly blockquote: NarrationNodeRule<BlockquoteNarrationContext>;
+  readonly image: NarrationNodeRule<ImageNarrationContext>;
 }
 
 export interface NarrationNodeRuleOverrides<Context> {
@@ -68,6 +110,15 @@ export interface HeadingNarrationOverrides {
   readonly 6?: NarrationNodeRuleOverrides<HeadingNarrationContext>;
 }
 
+export interface ListItemNarrationOverrides extends NarrationNodeRuleOverrides<ListItemNarrationContext> {
+  readonly itemSeparator?: readonly NarrationFragment[];
+  readonly nestedItemSeparator?: readonly NarrationFragment[];
+  readonly orderedPrefix?: NarrationTemplateFactory<ListItemNarrationContext>;
+  readonly completedTaskPrefix?: readonly NarrationFragment[];
+  readonly incompleteTaskPrefix?: readonly NarrationFragment[];
+  readonly nestingPrefix?: NarrationTemplateFactory<ListItemNarrationContext>;
+}
+
 /** Purpose-built deep overrides. Arrays and callbacks replace default values. */
 export interface NarrationConfigurationOverrides {
   readonly document?: NarrationNodeRuleOverrides<DocumentNarrationContext>;
@@ -76,6 +127,11 @@ export interface NarrationConfigurationOverrides {
   readonly italic?: NarrationNodeRuleOverrides<EmphasisNarrationContext>;
   readonly strong?: NarrationNodeRuleOverrides<StrongNarrationContext>;
   readonly link?: NarrationNodeRuleOverrides<LinkNarrationContext>;
+  readonly orderedList?: NarrationNodeRuleOverrides<ListNarrationContext>;
+  readonly unorderedList?: NarrationNodeRuleOverrides<ListNarrationContext>;
+  readonly listItem?: ListItemNarrationOverrides;
+  readonly blockquote?: NarrationNodeRuleOverrides<BlockquoteNarrationContext>;
+  readonly image?: NarrationNodeRuleOverrides<ImageNarrationContext>;
 }
 
 const HEADING_PAUSES: Readonly<Record<HeadingLevel, readonly [number, number]>> = {
@@ -90,6 +146,39 @@ const HEADING_PAUSES: Readonly<Record<HeadingLevel, readonly [number, number]>> 
 const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
 const RULE_KEYS = ["skip", "before", "after", "contentStyle", "compile"] as const;
 const STYLE_KEYS = ["role", "tone", "rate", "emphasis"] as const;
+const LIST_ITEM_RULE_KEYS = [
+  ...RULE_KEYS,
+  "itemSeparator",
+  "nestedItemSeparator",
+  "orderedPrefix",
+  "completedTaskPrefix",
+  "incompleteTaskPrefix",
+  "nestingPrefix",
+] as const;
+
+const SMALL_NUMBERS = [
+  "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+  "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen",
+] as const;
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"] as const;
+
+function englishInteger(value: number): string {
+  if (!Number.isSafeInteger(value) || value < 0 || value >= 1_000_000) return String(value);
+  if (value < 20) return SMALL_NUMBERS[value] ?? String(value);
+  if (value < 100) {
+    const tens = TENS[Math.floor(value / 10)] ?? "";
+    const remainder = value % 10;
+    return remainder === 0 ? tens : `${tens}-${SMALL_NUMBERS[remainder]}`;
+  }
+  if (value < 1_000) {
+    const remainder = value % 100;
+    const hundreds = `${SMALL_NUMBERS[Math.floor(value / 100)]} hundred`;
+    return remainder === 0 ? hundreds : `${hundreds} ${englishInteger(remainder).toLowerCase()}`;
+  }
+  const remainder = value % 1_000;
+  const thousands = `${englishInteger(Math.floor(value / 1_000))} thousand`;
+  return remainder === 0 ? thousands : `${thousands} ${englishInteger(remainder).toLowerCase()}`;
+}
 
 function deepFreeze<T>(value: T): T {
   if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
@@ -130,6 +219,32 @@ function createDefaults(): NarrationConfiguration {
       contentStyle: { role: "strong-emphasis", emphasis: "strong" },
     },
     link: { skip: false, before: [], after: [] },
+    orderedList: { skip: false, before: [], after: [] },
+    unorderedList: { skip: false, before: [], after: [] },
+    listItem: {
+      skip: false,
+      before: [],
+      after: [],
+      contentStyle: { role: "list-item" },
+      itemSeparator: [{ kind: "pause", durationMs: 400 }],
+      nestedItemSeparator: [{ kind: "pause", durationMs: 550 }],
+      orderedPrefix: ({ number }) => [{ kind: "text", value: `${englishInteger(number ?? 1)}. ` }],
+      completedTaskPrefix: [{ kind: "text", value: "Completed item. " }],
+      incompleteTaskPrefix: [{ kind: "text", value: "Incomplete item. " }],
+      nestingPrefix: () => [],
+    },
+    blockquote: {
+      skip: false,
+      before: [{ kind: "pause", durationMs: 500 }],
+      after: [{ kind: "pause", durationMs: 500 }],
+      contentStyle: { role: "quotation" },
+    },
+    image: {
+      skip: false,
+      before: [{ kind: "text", value: "Image. ", style: { role: "image" } }],
+      after: [],
+      contentStyle: { role: "image" },
+    },
   };
 }
 
@@ -261,12 +376,46 @@ function resolveRule<Context>(
   });
 }
 
+function resolveListItemRule(
+  base: ListItemNarrationRule,
+  override: ListItemNarrationOverrides | undefined,
+): ListItemNarrationRule {
+  if (override === undefined) return base;
+  assertDataObject(override, "narration.listItem", LIST_ITEM_RULE_KEYS);
+  const commonOverride: NarrationNodeRuleOverrides<ListItemNarrationContext> = Object.fromEntries(
+    RULE_KEYS.flatMap((key) => Object.hasOwn(override, key) ? [[key, override[key]]] : []),
+  );
+  const common = resolveRule(base, commonOverride, "narration.listItem");
+  for (const key of ["orderedPrefix", "nestingPrefix"] as const) {
+    if (Object.hasOwn(override, key) && typeof override[key] !== "function") {
+      fail(`narration.listItem.${key}`, "must be a function");
+    }
+  }
+  const fragments = <Key extends "itemSeparator" | "nestedItemSeparator" | "completedTaskPrefix" | "incompleteTaskPrefix">(
+    key: Key,
+  ): ListItemNarrationRule[Key] => Object.hasOwn(override, key)
+    ? cloneAndValidateNarrationFragments(override[key], `narration.listItem.${key}`)
+    : base[key];
+  return deepFreeze({
+    ...common,
+    itemSeparator: fragments("itemSeparator"),
+    nestedItemSeparator: fragments("nestedItemSeparator"),
+    orderedPrefix: override.orderedPrefix ?? base.orderedPrefix,
+    completedTaskPrefix: fragments("completedTaskPrefix"),
+    incompleteTaskPrefix: fragments("incompleteTaskPrefix"),
+    nestingPrefix: override.nestingPrefix ?? base.nestingPrefix,
+  });
+}
+
 /** Validate, clone, deeply resolve, and freeze narration overrides. */
 export function resolveNarrationConfiguration(
   overrides?: NarrationConfigurationOverrides,
 ): NarrationConfiguration {
   if (overrides === undefined) return defaultNarrationConfiguration;
-  assertDataObject(overrides, "narration", ["document", "headings", "paragraph", "italic", "strong", "link"]);
+  assertDataObject(overrides, "narration", [
+    "document", "headings", "paragraph", "italic", "strong", "link", "orderedList", "unorderedList",
+    "listItem", "blockquote", "image",
+  ]);
   if (overrides.headings !== undefined) {
     assertDataObject(overrides.headings, "narration.headings", HEADING_LEVELS.map(String));
   }
@@ -281,5 +430,10 @@ export function resolveNarrationConfiguration(
     italic: resolveRule(defaultNarrationConfiguration.italic, overrides.italic, "narration.italic"),
     strong: resolveRule(defaultNarrationConfiguration.strong, overrides.strong, "narration.strong"),
     link: resolveRule(defaultNarrationConfiguration.link, overrides.link, "narration.link"),
+    orderedList: resolveRule(defaultNarrationConfiguration.orderedList, overrides.orderedList, "narration.orderedList"),
+    unorderedList: resolveRule(defaultNarrationConfiguration.unorderedList, overrides.unorderedList, "narration.unorderedList"),
+    listItem: resolveListItemRule(defaultNarrationConfiguration.listItem, overrides.listItem),
+    blockquote: resolveRule(defaultNarrationConfiguration.blockquote, overrides.blockquote, "narration.blockquote"),
+    image: resolveRule(defaultNarrationConfiguration.image, overrides.image, "narration.image"),
   });
 }

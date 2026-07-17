@@ -31,12 +31,18 @@ export {
   resolveNarrationConfiguration,
 } from "./narration/configuration.js";
 export type {
+  BlockquoteNarrationContext,
   DocumentNarrationContext,
   EmphasisNarrationContext,
   HeadingLevel,
   HeadingNarrationContext,
   HeadingNarrationOverrides,
+  ImageNarrationContext,
   LinkNarrationContext,
+  ListItemNarrationContext,
+  ListItemNarrationOverrides,
+  ListItemNarrationRule,
+  ListNarrationContext,
   NarrationConfiguration,
   NarrationNodeRule,
   NarrationNodeRuleOverrides,
