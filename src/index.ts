@@ -26,6 +26,24 @@ export type {
   PauseNarrationToken,
   TextNarrationToken,
 } from "./narration/tokens.js";
+export {
+  defaultNarrationConfiguration,
+  resolveNarrationConfiguration,
+} from "./narration/configuration.js";
+export type {
+  DocumentNarrationContext,
+  EmphasisNarrationContext,
+  HeadingLevel,
+  HeadingNarrationContext,
+  HeadingNarrationOverrides,
+  LinkNarrationContext,
+  NarrationConfiguration,
+  NarrationNodeRule,
+  NarrationNodeRuleOverrides,
+  NarrationTemplateFactory,
+  ParagraphNarrationContext,
+  StrongNarrationContext,
+} from "./narration/configuration.js";
 export type {
   NarrationRenderer,
   NarrationRenderResult,

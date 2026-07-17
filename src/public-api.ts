@@ -1,9 +1,9 @@
 import type { NarrationDiagnostic } from "./narration/diagnostics.js";
 import type { NarrationPlan } from "./narration/tokens.js";
 import type { NarrationRenderer } from "./renderers/renderer.js";
+import type { NarrationConfigurationOverrides } from "./narration/configuration.js";
 
-/** Reserved until the configuration milestone defines the nested overrides. */
-export type NarrationConfigurationOverrides = Readonly<Record<string, never>>;
+export type { NarrationConfigurationOverrides } from "./narration/configuration.js";
 
 export interface ConversionResult {
   readonly plan: NarrationPlan;

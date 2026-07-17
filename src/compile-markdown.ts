@@ -4,11 +4,14 @@ import type {
   CompileMarkdownOptions,
   NarrationCompilationResult,
 } from "./public-api.js";
+import { resolveNarrationConfiguration } from "./narration/configuration.js";
 
 export function compileMarkdown(
   markdown: string,
-  _options?: CompileMarkdownOptions,
+  options?: CompileMarkdownOptions,
 ): NarrationCompilationResult {
+  // Configuration validation deliberately precedes Markdown parser invocation.
+  const configuration = resolveNarrationConfiguration(options?.narration);
   const root = parseMarkdown(markdown);
-  return compileMarkdownTree(root);
+  return compileMarkdownTree(root, configuration);
 }
