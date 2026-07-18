@@ -138,6 +138,7 @@ try {
     "package/package.json",
     "package/README.md",
     "package/CHANGELOG.md",
+    "package/RELEASING.md",
     "package/LICENSE",
     "package/dist/index.js",
     "package/dist/index.d.ts",
@@ -146,7 +147,7 @@ try {
   for (const requiredFile of requiredFiles) {
     assert.ok(archiveEntries.includes(requiredFile), `tarball is missing ${requiredFile}`);
   }
-  const allowedEntry = /^package\/(?:package\.json|README\.md|CHANGELOG\.md|LICENSE|dist\/)/;
+  const allowedEntry = /^package\/(?:package\.json|README\.md|CHANGELOG\.md|RELEASING\.md|LICENSE|dist\/)/;
   const unexpectedEntries = archiveEntries.filter((entry) => !allowedEntry.test(entry));
   assert.deepEqual(unexpectedEntries, [], `tarball contains unexpected files: ${unexpectedEntries.join(", ")}`);
   const sensitiveEntry = /(?:^|\/)(?:\.env(?:\..*)?|\.npmrc|credentials(?:\..*)?|id_rsa|[^/]+\.(?:pem|key|p12))$/i;

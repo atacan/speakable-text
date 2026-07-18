@@ -1,0 +1,77 @@
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable release tag (for example, v0.1.1)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish-speakable-text
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Validate and publish
+    if: ${{ github.repository == 'atacan/speakable-text' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify tag belongs to main
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          git fetch --no-tags origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-list -n 1 "$RELEASE_TAG")"
+          git merge-base --is-ancestor HEAD origin/main
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Verify trusted-publishing toolchain
+        run: |
+          node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 22 || (major === 22 && minor < 14)) process.exit(1)'
+          node -e 'const [major, minor, patch] = process.argv[1].split(".").map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) process.exit(1)' "$(npm --version)"
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Validate release identity and metadata
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: npm run release:preflight -- --tag "$RELEASE_TAG" --require-clean
+
+      - name: Confirm version is new and increasing
+        run: |
+          npm view speakable-text versions --json > "$RUNNER_TEMP/published-versions.json"
+          node -e 'const fs = require("node:fs"); const candidate = require("./package.json").version; const parse = value => value.split(".").map(Number); const compare = (left, right) => { const a = parse(left); const b = parse(right); return a[0] - b[0] || a[1] - b[1] || a[2] - b[2]; }; const raw = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); const versions = (Array.isArray(raw) ? raw : [raw]).filter(value => /^\d+\.\d+\.\d+$/.test(value)); if (versions.includes(candidate) || versions.some(value => compare(candidate, value) <= 0)) process.exit(1);' "$RUNNER_TEMP/published-versions.json"
+
+      - name: Run full verification
+        run: npm run check
+
+      - name: Validate exact package consumers
+        run: npm run test:package
+
+      - name: Confirm tracked release inputs are unchanged
+        run: git diff --exit-code HEAD --
+
+      # npm >=11.5.1 automatically exchanges GitHub's OIDC token and emits
+      # provenance for public packages built in a public GitHub repository.
+      - name: Publish public package with provenance
+        run: npm publish --access public

@@ -266,6 +266,10 @@ installs it with its dependencies and consumer build tools into an isolated
 temporary project, then verifies Node, TypeScript, browser-bundler, exports,
 and published-file behavior. It requires registry access and never publishes.
 
+Maintainers should follow [RELEASING.md](RELEASING.md) for the registry
+bootstrap, trusted-publishing setup, and guarded release process. The release
+workflow contains no npm credential or token secret.
+
 ## Versioning
 
 The package follows Semantic Versioning. While the version is below 1.0, the
