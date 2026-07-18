@@ -6,19 +6,14 @@
 
 ## Release decision
 
-The implementation satisfies acceptance criteria 1–16 and 18–19 with
-automated evidence. Criteria 17 and 20 are only partially satisfied, so the
-project must not yet claim full version 1 acceptance:
+The implementation satisfies acceptance criteria 1–20. Automated evidence is
+supplemented by a successful 22-case run in a real browser and a human review
+of the S06 transcript through OpenAI and ElevenLabs text-to-speech systems.
+No blocking comprehension issue was reported.
 
-- The server build and browser-target bundle produce identical results for the
-  complete runtime corpus, and the bundle works in a DOM-free worker-like
-  runtime. The checked-in real-browser smoke page has not been executed in an
-  actual browser or extension context in this environment.
-- Python and TypeScript golden narration passes, and S06 passes its mechanical
-  preservation review. A human has not listened to S06 through two materially
-  different TTS systems.
-
-Those are evidence gates, not known implementation failures.
+Version 1 behavioral acceptance is complete. Publication metadata and a clean
+network-enabled consumer installation remain release-process tasks rather than
+specification failures.
 
 ## Automated evidence
 
@@ -85,10 +80,10 @@ should still be installed once in a network-enabled disposable project.
 | 14 | Pass | S03 and code tests cover phrasebook overrides and start/language/end announcements. |
 | 15 | Pass | S04 covers a custom renderer, escaping, capability degradation, diagnostic ordering/deduplication, and schema rejection. |
 | 16 | Pass | Source/static-bundle audit plus throwing-`fetch` parity execution; conversion imports no I/O or network API. |
-| 17 | Partial | Server/browser artifact parity and DOM-free worker smoke pass. Real browser/extension execution remains unsigned. |
+| 17 | Pass | Server/browser artifact parity and DOM-free worker smoke pass; the project owner confirmed all 22 cases passed in the Codex in-app browser. |
 | 18 | Pass | Exact snapshots/golden assertions and three repeated conversions per runtime case are stable. |
 | 19 | Pass | Every content fixture plus S06 mechanical order/relationship/delimiter checks; adversarial recovery corpus checks visible markers and balanced boundaries. |
-| 20 | Partial | F08/F09/F15 semantic golden tests and S06 mechanical transcript review pass. Two-system human listening is unsigned. |
+| 20 | Pass | F08/F09/F15 semantic golden tests and S06 mechanical review pass; the project owner reported no blocking issue after listening with OpenAI and ElevenLabs. |
 
 ## Requirement-family audit
 
@@ -149,36 +144,32 @@ risks to listen for are the intentionally verbose table, the phrase “optionall
 access,” and punctuation cadence in lexical fallback. Mechanical inspection
 cannot establish how two speech engines realize those phrases.
 
-## Required manual sign-offs
+## Completed manual sign-offs
 
 ### Real browser and extension-relevant runtime
 
-Run `npm run build:browser`, open `tests/browser-smoke.html` directly in a
-supported real browser, and record:
-
-- browser/version and operating system;
-- `data-status="passed"` and the reported corpus count;
-- the actual extension context (content script, service worker, or both) if
-  the release advertises it.
+- **Reviewer:** project owner
+- **Date:** 2026-07-18
+- **Library commit:** `d1e0b7c`
+- **Runtime:** Codex in-app browser on macOS; browser version was not exposed
+- **Result:** `data-status="passed"`; 22 browser corpus cases passed
+- **Scope note:** no extension content-script or service-worker context was
+  exercised; run that separately before advertising extension-specific
+  compatibility.
 
 ### Listening review
 
-Listen to S06 through the plain-text renderer in two materially different TTS
-systems and record:
-
-- reviewer and date;
-- library commit and renderer;
-- TTS system/model A and B;
-- any blocking comprehension issue, with the source phrase;
-- final decision: **pass only when neither system has a blocking issue**.
-
-Do not replace this gate with transcript inspection or claim it passed without
-hearing the audio.
+- **Reviewer:** project owner
+- **Date:** 2026-07-18
+- **Library commit and renderer:** `d1e0b7c`, built-in plain-text renderer
+- **Systems:** OpenAI and ElevenLabs; specific models/voices were not recorded
+- **Blocking comprehension issues:** none reported (“they sounded OK”)
+- **Decision:** pass
 
 ## Publication-only checklist
 
 Before an npm release, separately choose a non-placeholder version, confirm
 the final package name, add/confirm license and user-facing README metadata,
-install the tarball in a network-enabled disposable consumer, and run the
-browser and listening sign-offs above. These publication choices do not change
-the conversion architecture or current behavioral evidence.
+and install the tarball in a network-enabled disposable consumer. These
+publication choices do not change the conversion architecture or current
+behavioral evidence.
