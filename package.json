@@ -1,9 +1,31 @@
 {
   "name": "speakable-text",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Deterministic Markdown-to-speakable-text library",
+  "keywords": [
+    "accessibility",
+    "markdown",
+    "narration",
+    "screen-reader",
+    "text-to-speech",
+    "tts"
+  ],
+  "homepage": "https://github.com/atacan/speakable-text#readme",
+  "bugs": {
+    "url": "https://github.com/atacan/speakable-text/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atacan/speakable-text.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "atacan",
+    "url": "https://github.com/atacan/"
+  },
   "type": "module",
   "sideEffects": false,
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -27,6 +49,7 @@
     "build": "tsc -p tsconfig.build.json",
     "build:browser": "node scripts/build-browser.mjs",
     "check": "npm run typecheck && npm test && npm run build && npm run build:browser && npm run test:worker && npm run test:browser-bundle && npm run test:runtime",
+    "prepack": "npm run build && npm run build:browser",
     "test": "node --import tsx --test \"tests/**/*.test.ts\"",
     "test:browser-bundle": "node tests/browser-smoke-bundle.mjs",
     "test:worker": "node tests/worker-smoke.mjs",
@@ -35,6 +58,11 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
   },
   "dependencies": {
     "@lezer/common": "1.5.2",
