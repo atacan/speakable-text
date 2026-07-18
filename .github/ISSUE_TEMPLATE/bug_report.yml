@@ -1,0 +1,92 @@
+name: Bug report
+description: Report reproducible incorrect behavior in speakable-text
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Search existing issues first and remove credentials or private data from all examples.
+
+        **Security issue?** Do not continue here. Use [private vulnerability reporting](https://github.com/atacan/speakable-text/security/advisories/new).
+
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      description: Run `npm list speakable-text` or provide the exact installed version.
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime and version
+      description: Include Node.js or browser name/version and any bundler or worker environment.
+      placeholder: Node.js 22.17.0, or Firefox 140 with Vite 7
+    validations:
+      required: true
+
+  - type: dropdown
+    id: api
+    attributes:
+      label: Public API
+      description: Select the API closest to the problem.
+      options:
+        - convertMarkdown
+        - compileMarkdown
+        - renderNarration
+        - createPlainTextRenderer
+        - Package import, types, or browser bundle
+        - Other or unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide runnable code and the smallest Markdown, configuration, or narration plan that reproduces the problem.
+      placeholder: |
+        ```js
+        import { convertMarkdown } from "speakable-text";
+        console.log(convertMarkdown("# Example"));
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Include the expected text, plan, diagnostics, or error as appropriate.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the complete text, diagnostics, stack trace, or build error. Use text instead of only a screenshot or audio recording.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add relevant configuration, regression information, links, or media. Include alt text for images and transcripts for audio/video.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: I removed credentials, personal data, and confidential content from this report.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
