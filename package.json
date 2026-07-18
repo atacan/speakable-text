@@ -53,7 +53,7 @@
     "check": "npm run typecheck && npm test && npm run build && npm run build:browser && npm run test:worker && npm run test:browser-bundle && npm run test:runtime",
     "prepack": "npm run build && npm run build:browser",
     "release:preflight": "node scripts/release-preflight.mjs",
-    "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "test": "node scripts/run-tests.mjs",
     "test:browser-bundle": "node tests/browser-smoke-bundle.mjs",
     "test:package": "node scripts/test-package.mjs",
     "test:worker": "node tests/worker-smoke.mjs",
