@@ -1,6 +1,6 @@
 # Version 1 release-readiness audit
 
-**Audit date:** 2026-07-17  
+**Audit date:** 2026-07-18
 **Normative source:** [`specs.md`](./specs.md), draft v0.2  
 **Golden corpus:** [`behavior-contract.md`](./behavior-contract.md)
 
@@ -35,6 +35,8 @@ At this audit, `npm run check` covers:
 - 112 unit, golden, recovery, configuration, renderer, and API tests;
 - declaration/ESM build and browser-target bundle build;
 - DOM-free worker parser smoke;
+- the self-contained classic-script browser smoke bundle in an isolated,
+  process-free DOM harness;
 - 22 runtime-corpus cases compared between the server artifact and browser
   artifact, repeated three times with `fetch` replaced by a throwing sentinel.
 
@@ -151,8 +153,8 @@ cannot establish how two speech engines realize those phrases.
 
 ### Real browser and extension-relevant runtime
 
-Serve the repository after `npm run check`, open
-`tests/browser-smoke.html` in a supported real browser, and record:
+Run `npm run build:browser`, open `tests/browser-smoke.html` directly in a
+supported real browser, and record:
 
 - browser/version and operating system;
 - `data-status="passed"` and the reported corpus count;

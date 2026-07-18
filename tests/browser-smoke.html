@@ -2,22 +2,14 @@
 <meta charset="utf-8">
 <title>Speakable Text browser smoke</title>
 <pre id="result" data-status="running">Running browser corpus…</pre>
-<script type="module">
-  import { convertMarkdown } from "/dist/browser/index.js";
-  import { parityCases } from "/tests/fixtures/runtime-corpus.mjs";
-
+<script>
   const result = document.querySelector("#result");
-  try {
-    if (typeof process !== "undefined") throw new Error("Node process leaked into browser runtime");
-    for (const entry of parityCases) {
-      const first = convertMarkdown(entry.markdown, entry.options);
-      const second = convertMarkdown(entry.markdown, entry.options);
-      if (JSON.stringify(first) !== JSON.stringify(second)) throw new Error(`${entry.name} was nondeterministic`);
-    }
-    result.dataset.status = "passed";
-    result.textContent = `Passed ${parityCases.length} browser corpus cases`;
-  } catch (error) {
+  window.reportBrowserSmokeFailure = (error) => {
     result.dataset.status = "failed";
     result.textContent = error instanceof Error ? error.stack : String(error);
-  }
+  };
 </script>
+<script
+  src="../.verification/browser-smoke.js"
+  onerror="reportBrowserSmokeFailure(new Error('Browser smoke bundle is missing. Run `npm run build:browser`, then reload this page.'))"
+></script>

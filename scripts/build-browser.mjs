@@ -38,3 +38,10 @@ await build({
   entryPoints: ["src/internal/parser-smoke.ts"],
   outfile: ".verification/parser-smoke.js",
 });
+
+await build({
+  ...shared,
+  entryPoints: ["tests/browser-smoke-entry.ts"],
+  format: "iife",
+  outfile: ".verification/browser-smoke.js",
+});

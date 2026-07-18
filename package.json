@@ -26,8 +26,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "build:browser": "node scripts/build-browser.mjs",
-    "check": "npm run typecheck && npm test && npm run build && npm run build:browser && npm run test:worker && npm run test:runtime",
+    "check": "npm run typecheck && npm test && npm run build && npm run build:browser && npm run test:worker && npm run test:browser-bundle && npm run test:runtime",
     "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "test:browser-bundle": "node tests/browser-smoke-bundle.mjs",
     "test:worker": "node tests/worker-smoke.mjs",
     "test:runtime": "node tests/runtime-parity.mjs",
     "typecheck": "tsc -p tsconfig.json"
