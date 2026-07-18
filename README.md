@@ -255,12 +255,16 @@ where possible rather than interpreted.
 ```sh
 npm install
 npm run check
+npm run test:package
 ```
 
 `npm run check` performs strict TypeScript checking, the Node test suite,
 declaration and browser builds, worker and browser-bundle smoke tests, and
 server/browser runtime parity checks. `npm pack --dry-run` audits the files
-that would be published.
+that would be published. `npm run test:package` creates the exact npm tarball,
+installs it with its dependencies and consumer build tools into an isolated
+temporary project, then verifies Node, TypeScript, browser-bundler, exports,
+and published-file behavior. It requires registry access and never publishes.
 
 ## Versioning
 
