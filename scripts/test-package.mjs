@@ -143,9 +143,22 @@ try {
     "package/dist/index.js",
     "package/dist/index.d.ts",
     "package/dist/browser/index.js",
+    "package/dist/browser/THIRD_PARTY_LICENSES.txt",
   ];
   for (const requiredFile of requiredFiles) {
     assert.ok(archiveEntries.includes(requiredFile), `tarball is missing ${requiredFile}`);
+  }
+  const thirdPartyLicenses = run(
+    "tar",
+    ["-xOzf", tarball, "package/dist/browser/THIRD_PARTY_LICENSES.txt"],
+    { capture: true },
+  );
+  for (const [dependency, version] of Object.entries(repositoryPackage.dependencies)) {
+    assert.match(
+      thirdPartyLicenses,
+      new RegExp(`^${dependency.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}@${version.replaceAll(".", "\\.")}$`, "m"),
+      `browser third-party notices are missing ${dependency}@${version}`,
+    );
   }
   const allowedEntry = /^package\/(?:package\.json|README\.md|CHANGELOG\.md|RELEASING\.md|LICENSE|dist\/)/;
   const unexpectedEntries = archiveEntries.filter((entry) => !allowedEntry.test(entry));

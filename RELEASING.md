@@ -23,7 +23,7 @@ flow:
    ```sh
    npm ci
    npm run check
-   npm run release:preflight -- --tag v0.1.0
+   npm run release:preflight -- --tag v0.1.0 --require-clean
    npm run test:package
    npm pack --dry-run
    npm publish --access public --provenance=false
@@ -74,7 +74,7 @@ not.
    ```sh
    npm ci
    npm run check
-   npm run release:preflight -- --tag vX.Y.Z
+   npm run release:preflight -- --tag vX.Y.Z --require-clean
    npm run test:package
    npm pack --dry-run
    ```

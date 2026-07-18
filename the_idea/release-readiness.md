@@ -27,7 +27,7 @@ npm_config_cache=/tmp/speakable-text-npm-cache npm pack --dry-run
 At this audit, `npm run check` covers:
 
 - strict TypeScript checking;
-- 112 unit, golden, recovery, configuration, renderer, and API tests;
+- 115 unit, golden, recovery, configuration, renderer, documentation, and API tests;
 - declaration/ESM build and browser-target bundle build;
 - DOM-free worker parser smoke;
 - the self-contained classic-script browser smoke bundle in an isolated,
@@ -55,10 +55,10 @@ successfully:
 4. called `convertMarkdown`, `compileMarkdown`, `renderNarration`, and
    `createPlainTextRenderer` from the packed public surface.
 
-A normal clean `npm install` of the tarball could not resolve registry
-dependencies because this environment has no registry network access. That
-does not affect the packed-artifact checks above, but a publication candidate
-should still be installed once in a network-enabled disposable project.
+The exact tarball and its dependencies were installed from the public registry
+in credential-sanitized, disposable consumers under Node 20.20.2 and Node
+22.23.1. Both runs passed the Node ESM, NodeNext TypeScript, browser-bundler,
+browser-condition parity, and export-boundary checks.
 
 ## Acceptance traceability
 
@@ -166,10 +166,9 @@ cannot establish how two speech engines realize those phrases.
 - **Blocking comprehension issues:** none reported (“they sounded OK”)
 - **Decision:** pass
 
-## Publication-only checklist
+## Publication status
 
-Before an npm release, separately choose a non-placeholder version, confirm
-the final package name, add/confirm license and user-facing README metadata,
-and install the tarball in a network-enabled disposable consumer. These
-publication choices do not change the conversion architecture or current
-behavioral evidence.
+The package identity, version, MIT license, public README, changelog, exact
+tarball consumer checks, CI, and guarded trusted-publishing workflow are now
+prepared. The independent release-candidate evidence and remaining maintainer
+actions are recorded in [`publication-audit.md`](./publication-audit.md).
