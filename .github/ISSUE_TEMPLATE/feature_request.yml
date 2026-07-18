@@ -1,0 +1,64 @@
+name: Feature request
+description: Propose a focused improvement to speakable-text
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the use case before the implementation. Changes to default narration are user-visible and may affect transcript stability.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to accomplish, and who benefits?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Show example Markdown/API input and desired output where possible. Include text transcripts in addition to audio.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Markdown narration
+        - Python or TypeScript code narration
+        - Configuration
+        - Narration plans or custom renderers
+        - Browser or worker support
+        - Diagnostics
+        - Packaging, types, or documentation
+        - Other or unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe current workarounds or other designs you considered.
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility considerations
+      description: Note any expected changes to public APIs, default transcripts, diagnostics, server/browser parity, or determinism.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and discussions for this request.
+          required: true
+        - label: I have described the user need, not only an implementation preference.
+          required: true
