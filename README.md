@@ -1,10 +1,10 @@
 # speakable-text
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/atacan/speakable-text)
 [![npm package version](https://img.shields.io/npm/v/speakable-text?label=npm)](https://www.npmjs.com/package/speakable-text)
 [![GitHub Actions CI status](https://github.com/atacan/speakable-text/actions/workflows/ci.yml/badge.svg)](https://github.com/atacan/speakable-text/actions/workflows/ci.yml)
 [![Node.js 20 or newer](https://img.shields.io/node/v/speakable-text?logo=node.js&logoColor=white)](https://nodejs.org/en/about/previous-releases)
 [![MIT license](https://img.shields.io/npm/l/speakable-text)](https://github.com/atacan/speakable-text/blob/main/LICENSE)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/atacan/speakable-text)
 
 `speakable-text` converts Markdown into deterministic text designed to be read
 by a text-to-speech system. It turns headings, lists, tables, links, inline
