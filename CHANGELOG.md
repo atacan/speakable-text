@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-29
+
 ### Added
 
 - Self-contained JavaScriptCore build (`dist/jscore/speakable-text.js`) for
@@ -34,4 +36,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Equivalent ESM server and self-contained browser entry points, including
   DOM-free worker support.
 
+[0.2.0]: https://github.com/atacan/speakable-text/releases/tag/v0.2.0
 [0.1.0]: https://github.com/atacan/speakable-text/releases/tag/v0.1.0
