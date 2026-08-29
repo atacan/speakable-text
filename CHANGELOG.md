@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Self-contained JavaScriptCore build (`dist/jscore/speakable-text.js`) for
+  hosts that supply only the JavaScript language runtime, such as Apple's
+  `JavaScriptCore`. It installs a single `SpeakableText` global with a
+  JSON-oriented `convertMarkdownJSON(markdown, optionsJSON?)` bridge, has no
+  `import`, `export`, or `require`, and does not reference `window`,
+  `document`, `process`, `Buffer`, `fetch`, or other Node/browser globals.
+  Published alongside generated third-party license notices for the bundled
+  dependencies.
+
 ## [0.1.0] - 2026-07-18
 
 ### Added

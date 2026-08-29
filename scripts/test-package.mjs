@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import vm from "node:vm";
 
 const repositoryRoot = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const repositoryPackage = JSON.parse(await readFile(join(repositoryRoot, "package.json"), "utf8"));
@@ -144,21 +145,25 @@ try {
     "package/dist/index.d.ts",
     "package/dist/browser/index.js",
     "package/dist/browser/THIRD_PARTY_LICENSES.txt",
+    "package/dist/jscore/speakable-text.js",
+    "package/dist/jscore/THIRD_PARTY_LICENSES.txt",
   ];
   for (const requiredFile of requiredFiles) {
     assert.ok(archiveEntries.includes(requiredFile), `tarball is missing ${requiredFile}`);
   }
-  const thirdPartyLicenses = run(
-    "tar",
-    ["-xOzf", tarball, "package/dist/browser/THIRD_PARTY_LICENSES.txt"],
-    { capture: true },
-  );
-  for (const [dependency, version] of Object.entries(repositoryPackage.dependencies)) {
-    assert.match(
-      thirdPartyLicenses,
-      new RegExp(`^${dependency.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}@${version.replaceAll(".", "\\.")}$`, "m"),
-      `browser third-party notices are missing ${dependency}@${version}`,
+  for (const bundleLabel of ["browser", "jscore"]) {
+    const thirdPartyLicenses = run(
+      "tar",
+      ["-xOzf", tarball, `package/dist/${bundleLabel}/THIRD_PARTY_LICENSES.txt`],
+      { capture: true },
     );
+    for (const [dependency, version] of Object.entries(repositoryPackage.dependencies)) {
+      assert.match(
+        thirdPartyLicenses,
+        new RegExp(`^${dependency.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}@${version.replaceAll(".", "\\.")}$`, "m"),
+        `${bundleLabel} third-party notices are missing ${dependency}@${version}`,
+      );
+    }
   }
   const allowedEntry = /^package\/(?:package\.json|README\.md|CHANGELOG\.md|RELEASING\.md|LICENSE|dist\/)/;
   const unexpectedEntries = archiveEntries.filter((entry) => !allowedEntry.test(entry));
@@ -232,6 +237,28 @@ console.log(JSON.stringify({
     "browser-condition consumer",
   );
   assert.deepEqual(browserConditionResult, serverResult);
+
+  console.log("\n[package] Evaluating the installed JavaScriptCore bundle in a clean vm context");
+  const jscoreSource = await readFile(
+    join(consumerDirectory, "node_modules/speakable-text/dist/jscore/speakable-text.js"),
+    "utf8",
+  );
+  const jscoreContext = vm.createContext({});
+  vm.runInContext(jscoreSource, jscoreContext, { filename: "speakable-text.js" });
+  for (const forbiddenGlobal of ["window", "document", "process", "require", "module", "exports", "Buffer"]) {
+    assert.equal(
+      forbiddenGlobal in jscoreContext,
+      false,
+      `installed jscore bundle host context gained a "${forbiddenGlobal}" global`,
+    );
+  }
+  assert.equal(typeof jscoreContext.SpeakableText?.convertMarkdownJSON, "function");
+  const jscoreResult = JSON.parse(jscoreContext.SpeakableText.convertMarkdownJSON(representativeMarkdown));
+  assert.deepEqual(
+    jscoreResult,
+    { plan: serverResult.plan, text: serverResult.text, diagnostics: serverResult.conversionDiagnostics },
+    "installed jscore bundle result did not match the Node ESM consumer",
+  );
 
   await writeConsumerFile(
     "types.ts",

@@ -80,7 +80,15 @@ assert.equal(packageLock.version, packageJson.version);
 assert.equal(packageLock.packages?.[""]?.name, packageJson.name);
 assert.equal(packageLock.packages?.[""]?.version, packageJson.version);
 assert.ok(packageJson.files?.includes("dist/browser"), "browser build must be published");
+assert.ok(packageJson.files?.includes("dist/jscore"), "JavaScriptCore build must be published");
 assert.ok(packageJson.files?.includes("dist/index.*"), "root entry point must be published");
+for (const forbiddenExport of Object.keys(packageJson.exports?.["."] ?? {})) {
+  assert.notEqual(
+    packageJson.exports["."][forbiddenExport],
+    "./dist/jscore/speakable-text.js",
+    "the JavaScriptCore IIFE bundle must not be wired into package.json exports as an ES module",
+  );
+}
 assert.match(changelog, new RegExp(`^## \\[${packageJson.version.replaceAll(".", "\\.")}\\](?: - \\d{4}-\\d{2}-\\d{2})?$`, "m"));
 assert.equal((changelog.match(new RegExp(`^## \\[${packageJson.version.replaceAll(".", "\\.")}\\]`, "gm")) ?? []).length, 1);
 assert.match(changelog, new RegExp(`^\\[${packageJson.version.replaceAll(".", "\\.")}\\]: https://github\\.com/atacan/speakable-text/releases/tag/v${packageJson.version}$`, "m"));

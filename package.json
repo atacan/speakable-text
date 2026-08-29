@@ -37,6 +37,7 @@
     "CHANGELOG.md",
     "RELEASING.md",
     "dist/browser",
+    "dist/jscore",
     "dist/code",
     "dist/markdown",
     "dist/narration",
@@ -50,14 +51,16 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "build:browser": "node scripts/build-browser.mjs",
-    "check": "npm run typecheck && npm test && npm run build && npm run build:browser && npm run test:worker && npm run test:browser-bundle && npm run test:runtime",
-    "prepack": "npm run build && npm run build:browser",
+    "build:jscore": "node scripts/build-jscore.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run build:browser && npm run build:jscore && npm run test:worker && npm run test:browser-bundle && npm run test:runtime && npm run test:jscore",
+    "prepack": "npm run build && npm run build:browser && npm run build:jscore",
     "release:preflight": "node scripts/release-preflight.mjs",
     "test": "node scripts/run-tests.mjs",
     "test:browser-bundle": "node tests/browser-smoke-bundle.mjs",
     "test:package": "node scripts/test-package.mjs",
     "test:worker": "node tests/worker-smoke.mjs",
     "test:runtime": "node tests/runtime-parity.mjs",
+    "test:jscore": "node tests/jscore-smoke.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "engines": {
