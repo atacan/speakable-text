@@ -230,6 +230,34 @@ If you load modules directly in a browser without a bundler, your server or
 import map must resolve the bare package specifier. This package does not ship
 a global variable or a script-tag CDN URL.
 
+## JavaScriptCore
+
+`dist/jscore/speakable-text.js` is a separate, self-contained build for hosts
+that only supply the JavaScript language runtime, such as Apple's
+[`JavaScriptCore`](https://developer.apple.com/documentation/javascriptcore)
+(for example from a Swift package). It bundles every runtime dependency into
+one classic (non-module) script, has no `import`, `export`, or `require`, and
+does not reference `window`, `document`, `process`, `Buffer`, `fetch`, or any
+other Node/browser global. Evaluating it (`JSContext.evaluateScript(...)`)
+installs a single `SpeakableText` global object.
+
+The ordinary TypeScript API is not JSON-safe end to end (it accepts callback
+functions and custom renderer objects), so this build exposes a small
+JSON-oriented bridge instead of the full API:
+
+- `SpeakableText.convertMarkdownJSON(markdown, optionsJSON?)` — `markdown` is
+  a string; `optionsJSON`, if supplied, is a JSON string decoding to a plain
+  object matching `ConvertMarkdownOptions` (a `renderer` or narration
+  `compile` callback cannot be represented in JSON and is ignored if
+  present). It calls the same `convertMarkdown` used elsewhere and returns
+  `JSON.stringify` of its `{ plan, text, diagnostics }` result. Malformed JSON
+  or invalid configuration throws an ordinary JavaScript exception, which a
+  host's `JSContext.exceptionHandler` observes.
+
+This build exists specifically for embedding in a native host. Ordinary
+JavaScript/TypeScript consumers should keep using the root import or the
+browser build documented above.
+
 ## Determinism and security properties
 
 With the same input, package version, configuration, renderer, and parser
@@ -265,12 +293,15 @@ npm run test:package
 ```
 
 `npm run check` performs strict TypeScript checking, the Node test suite,
-declaration and browser builds, worker and browser-bundle smoke tests, and
-server/browser runtime parity checks. `npm pack --dry-run` audits the files
-that would be published. `npm run test:package` creates the exact npm tarball,
-installs it with its dependencies and consumer build tools into an isolated
-temporary project, then verifies Node, TypeScript, browser-bundler, exports,
-and published-file behavior. It requires registry access and never publishes.
+declaration, browser, and JavaScriptCore builds, worker and browser-bundle
+smoke tests, server/browser runtime parity checks, and the JavaScriptCore
+bundle's shape, host-isolation, functional-parity, and failure-handling
+tests (`npm run test:jscore`, `npm run build:jscore`). `npm pack --dry-run`
+audits the files that would be published. `npm run test:package` creates the
+exact npm tarball, installs it with its dependencies and consumer build tools
+into an isolated temporary project, then verifies Node, TypeScript,
+browser-bundler, JavaScriptCore-bundle, exports, and published-file behavior.
+It requires registry access and never publishes.
 
 Maintainers should follow [RELEASING.md](RELEASING.md) for the registry
 bootstrap, trusted-publishing setup, and guarded release process. The release
