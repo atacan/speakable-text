@@ -85,7 +85,7 @@
     "@types/mdast": "4.0.4",
     "@types/node": "20.19.43",
     "esbuild": "0.28.2",
-    "tsx": "4.23.12",
+    "tsx": "4.23.13",
     "typescript": "7.0.2"
   }
 }
