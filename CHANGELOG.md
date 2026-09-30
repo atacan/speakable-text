@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Plain-text rendering no longer inserts synthetic pause punctuation or
+  whitespace immediately after an opening parenthesis, bracket, or brace,
+  fixing inline-code output such as `(, message)` to read `(message)`.
+
 ## [0.2.0] - 2026-08-29
 
 ### Added

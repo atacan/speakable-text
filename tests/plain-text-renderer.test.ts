@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  convertMarkdown,
   createPlainTextRenderer,
   renderNarration,
   type NarrationPlan,
@@ -97,6 +98,59 @@ test("a pause before source punctuation cannot introduce duplicate punctuation",
     ],
   });
   assert.equal(result.text, "Use user I D.");
+});
+
+test("pauses inside delimiters do not introduce punctuation after the opening delimiter", () => {
+  for (const [opening, closing] of [["(", ")"], ["[", "]"], ["{", "}"]] as const) {
+    for (const durationMs of [1, 150, 349, 350, 500, 749, 750, 900]) {
+      const result = renderNarration({
+        schemaVersion: 1,
+        tokens: [
+          { kind: "text", value: `before ${opening}` },
+          { kind: "pause", durationMs },
+          { kind: "text", value: "message" },
+          { kind: "pause", durationMs },
+          { kind: "text", value: `${closing} after` },
+        ],
+      });
+      assert.equal(result.text, `before ${opening}message${closing} after`, `${opening} at ${durationMs} ms`);
+      assert.equal(result.diagnostics[0]?.code, "RENDERER_FEATURE_APPROXIMATED");
+    }
+  }
+});
+
+test("pauses before immediate or whitespace-prefixed punctuation preserve the source text", () => {
+  for (const durationMs of [150, 500, 900]) {
+    for (const whitespace of ["", " ", "  ", "\t", "\n", "\u00a0"]) {
+      for (const punctuation of ".,!?;:)]}") {
+        const followingText = `${whitespace}${punctuation}`;
+        const result = renderNarration({
+          schemaVersion: 1,
+          tokens: [
+            { kind: "text", value: "value" },
+            { kind: "pause", durationMs },
+            { kind: "text", value: followingText },
+          ],
+        });
+        assert.equal(result.text, `value${followingText}`);
+      }
+    }
+  }
+});
+
+test("inline code inside parentheses has no synthetic punctuation after the opening parenthesis", () => {
+  const cases = [
+    ["(`message`)", "(message)"],
+    ["`revision` (`message`)", "revision (message)"],
+    ["((`message`))", "((message))"],
+    [
+      "Phase 4 was committed as `fae6e4ea` (`keyboard: implement foreground audio prototype`).",
+      "Phase 4 was committed as fae6e4ea (keyboard. implement foreground audio prototype).",
+    ],
+  ] as const;
+  for (const [markdown, expected] of cases) {
+    assert.equal(convertMarkdown(markdown).text, expected);
+  }
 });
 
 test("ignored structural boundaries still separate otherwise adjacent words", () => {

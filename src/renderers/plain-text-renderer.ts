@@ -26,6 +26,9 @@ function pauseText(durationMs: number, renderedSoFar: string, followingText: str
   if (finalCharacter !== undefined && finalCharacter.trim().length === 0) {
     return "";
   }
+  // Keep source delimiters attached to their contents, including inline code
+  // whose leading structural pause would otherwise produce "(, message)".
+  if (finalCharacter !== undefined && "([{".includes(finalCharacter)) return "";
   // A structural pause immediately before source punctuation should not add a
   // second punctuation mark. This is especially common for inline code at the
   // end of a sentence, where the compiler emits the code's trailing pause
@@ -109,6 +112,8 @@ function reportApproximatedPause(
  * - At the start of output, no punctuation or whitespace is introduced.
  *   Next to whitespace already carried by a text token, no duplicate
  *   punctuation or whitespace is added.
+ * - Immediately after an opening parenthesis, bracket, or brace, no
+ *   punctuation or whitespace is introduced.
  * - At the end of output, no trailing punctuation or whitespace is added.
  * - A compiler boundary between otherwise adjacent words becomes sentence
  *   punctuation (or one space when the preceding text is already punctuated).
