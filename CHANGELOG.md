@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-30
+
 ### Fixed
 
 - Large GFM tables no longer incur quadratic parsing work. Use the official
@@ -45,5 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Equivalent ESM server and self-contained browser entry points, including
   DOM-free worker support.
 
+[0.3.0]: https://github.com/atacan/speakable-text/releases/tag/v0.3.0
 [0.2.0]: https://github.com/atacan/speakable-text/releases/tag/v0.2.0
 [0.1.0]: https://github.com/atacan/speakable-text/releases/tag/v0.1.0
