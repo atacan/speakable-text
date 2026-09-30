@@ -7,3 +7,4 @@ export interface RuntimeFixtureCase {
 export const fixtures: Readonly<Record<string, string>>;
 export const representativeAgentResponse: string;
 export const parityCases: readonly RuntimeFixtureCase[];
+export const tableRegressionCases: readonly RuntimeFixtureCase[];

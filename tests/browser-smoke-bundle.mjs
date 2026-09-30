@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
+import { parityCases } from "./fixtures/runtime-corpus.mjs";
 
 const result = { dataset: { status: "running" }, textContent: "Running browser corpus…" };
 const document = { querySelector: (selector) => selector === "#result" ? result : null };
@@ -16,5 +17,5 @@ vm.runInNewContext(source, { document, window });
 
 assert.deepEqual(result, {
   dataset: { status: "passed" },
-  textContent: "Passed 22 browser corpus cases",
+  textContent: `Passed ${parityCases.length} browser corpus cases`,
 });

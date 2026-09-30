@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Large GFM tables no longer incur quadratic parsing work. Use the official
+  `micromark-extension-gfm-table` 2.1.2 fix directly so consumer lockfiles with
+  older transitive versions also receive the faster parser (issue #13).
 - Plain-text rendering no longer inserts synthetic pause punctuation or
   whitespace immediately after an opening parenthesis, bracket, or brace,
   fixing inline-code output such as `(, message)` to read `(message)`.
