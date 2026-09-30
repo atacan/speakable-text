@@ -101,7 +101,28 @@ export const representativeAgentResponse = [
   fixtures.F12,
 ].join("\n\n");
 
+export const tableRegressionCases = Object.freeze([
+  {
+    name: "table-alignment-escaped-pipes-inline-markup",
+    markdown: "| Left | Center | Right |\n| :--- | :---: | ---: |\n| a\\|b | **strong** &copy; | `x\\|y` |\n| [link][target] | ~~gone~~ | *soft* |\n\n[target]: https://example.test",
+  },
+  { name: "table-ragged-empty-cells", markdown: "| A | B | C |\n| - | - | - |\n| only-a |\n| | | |\n| a | b | c | extra |" },
+  { name: "table-without-outer-pipes", markdown: "A | B\n- | -\nα | 日本語\n | empty-left" },
+  { name: "table-in-blockquote", markdown: "> | A | B |\n> | - | - |\n> | one | two |\n>\n> after" },
+  { name: "table-in-list", markdown: "- Before\n\n  | A | B |\n  | - | - |\n  | one | two |\n\n  After" },
+  { name: "table-invalid-delimiter", markdown: "| A | B |\n| nope | - |\n| one | two |" },
+  {
+    name: "table-many-separate-tables",
+    markdown: Array.from({ length: 64 }, (_, i) => `Section ${i}.\n\n| A | B |\n| - | - |\n| ${i} | value |`).join("\n\n"),
+  },
+  {
+    name: "table-3200-rows-issue-13",
+    markdown: "| Name | Status |\n| --- | --- |\n" + Array.from({ length: 3200 }, (_, i) => `| Item ${i} | Passing |\n`).join(""),
+  },
+]);
+
 export const parityCases = Object.freeze([
+  ...tableRegressionCases,
   ...Object.entries(fixtures).map(([name, markdown]) => ({ name, markdown })),
   { name: "S06", markdown: representativeAgentResponse },
   {

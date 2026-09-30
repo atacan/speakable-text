@@ -181,6 +181,12 @@ try {
   );
 
   console.log("\n[package] Installing tarball and consumer tools with an isolated npm cache");
+  // Reproduce an existing consumer with an older table parser at the root.
+  // The library must use its own fixed dependency even when remark-gfm is
+  // deduplicated onto the consumer's older dependency tree.
+  run("npm", ["install", "--ignore-scripts", "--save-exact", "remark-gfm@4.0.1", "micromark-extension-gfm-table@2.1.1"], {
+    cwd: consumerDirectory, env: npmEnvironment,
+  });
   run(
     "npm",
     [
@@ -195,12 +201,23 @@ try {
 
   const runtimeConsumer = `
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { EditMap } from "./node_modules/micromark-extension-gfm-table/lib/edit-map.js";
 import {
   compileMarkdown,
   convertMarkdown,
   createPlainTextRenderer,
   renderNarration,
 } from "speakable-text";
+
+// Fail deterministically if conversion uses the consumer's legacy table
+// resolver. No wall-clock assertion is needed to catch this regression.
+const consumerRequire = createRequire(import.meta.url);
+const gfmRequire = createRequire(consumerRequire.resolve("micromark-extension-gfm"));
+assert.equal(gfmRequire.resolve("micromark-extension-gfm-table"), consumerRequire.resolve("micromark-extension-gfm-table"));
+EditMap.prototype.add = () => { throw new Error("Used legacy quadratic table parser"); };
+const table = convertMarkdown("| A | B |\\n| - | - |\\n| one | two |");
+assert.equal(table.text, "Table. Columns: A and B. Row one. A: one. B: two. End table.");
 
 const markdown = ${JSON.stringify(representativeMarkdown)};
 const conversion = convertMarkdown(markdown);
